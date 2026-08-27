@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Qiwigram</title>
+<meta name="theme-color" content="#0e1621">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="assets/css/app.css">
+
+<script>
+/* Тему ставим до первой отрисовки. Если ждать загрузки скриптов, светлая
+   тема успеет мигнуть тёмным экраном на каждом запуске. */
+(function () {
+    try {
+        var t = localStorage.getItem("qiwi.theme");
+        if (t) document.documentElement.setAttribute("data-theme", t);
+    } catch (e) { /* приватный режим — остаёмся на теме по умолчанию */ }
+})();
+
+/* Ловушка для срывов на старте. Регистрируется раньше всех остальных
+   скриптов намеренно: ошибка в них самих тоже должна быть видна. */
+(function () {
+    var pending = null;
+
+    function paint(text) {
+        var box = document.getElementById("boot-error");
+        if (!box) { pending = text; return; }   // разметки ещё нет — покажем позже
+        var bar = document.querySelector(".boot__bar");
+        if (bar) bar.hidden = true;
+        box.textContent = text;
+        box.hidden = false;
+    }
+
+    window.qiwiBootError = paint;
+
+    /* Отметка о пройденном шаге. Показывается на заставке, а при запуске
+       с локального сервера ещё и уходит в его журнал — иначе о чужом
+       браузере, до которого не дотянуться, ничего не узнать. */
+    window.qiwiStep = function (s) {
+        try {
+            var e = document.getElementById("boot-step");
+            if (e) e.textContent = s;
+            if (location.hostname === "localhost" && navigator.sendBeacon) {
+                navigator.sendBeacon("/__log?m=" + encodeURIComponent("ШАГ: " + s));
+            }
+        } catch (err) { /* отладка не должна ронять запуск */ }
+    };
+
+    document.addEventListener("DOMContentLoaded", function () {
+        if (pending) paint(pending);
+    });
+
+    window.addEventListener("error", function (e) {
+        // ошибка загрузки тега <script> приходит без message
+        var what = e.message || ("не загрузился файл: " + (e.target && (e.target.src || e.target.href) || "?"));
+        paint("Сбой при запуске:\n" + what);
+    }, true);
+
+    window.addEventListener("unhandledrejection", function (e) {
+        var r = e.reason;
+        paint("Сбой при запуске:\n" + ((r && (r.message || r)) || "неизвестно"));
+    });
+
+    /* Сторожевой таймер.
+       Приложение может не запуститься и без единой ошибки — например, когда
+       служебный работник отдаёт разметку одной версии, а скрипты другой.
+       Тогда заставка висит вечно и человеку не за что зацепиться. Через
+       десять секунд предлагаем единственное, что тут помогает: снести кэш
+       вместе с работником и загрузиться начисто. */
+    setTimeout(function () {
+        var boot = document.getElementById("boot");
+        if (!boot || boot.hidden) return;
+
+        var box = document.getElementById("boot-error");
+        if (!box || !box.hidden) return;   // ошибку уже показали, не мешаем
+
+        box.hidden = false;
+        box.textContent = "Приложение не запускается дольше обычного.\n" +
+            "Чаще всего это старые файлы, застрявшие в памяти браузера.";
+
+        var btn = document.createElement("button");
+        btn.className = "btn btn--primary";
+        btn.style.marginTop = "14px";
+        btn.textContent = "Сбросить и загрузить заново";
+        btn.onclick = async function () {
+            btn.disabled = true;
+            btn.textContent = "Чищу…";
+            try {
+                if (navigator.serviceWorker) {
+                    var regs = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(regs.map(function (r) { return r.unregister(); }));
+                }
+                if (window.caches) {
+                    var keys = await caches.keys();
+                    await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+                }
+            } catch (e) { /* чистим что получится */ }
+            // метка времени в адресе гарантирует, что ничего не возьмётся из кэша
+            location.replace(location.pathname + "?fresh=" + Date.now());
+        };
+        box.appendChild(btn);
+    }, 10000);
+})();
+</script>
+</head>
+<body>
+
+<!-- ======================= ЗАСТАВКА ЗАГРУЗКИ ======================= -->
+<div id="boot" class="boot">
+    <div class="boot__logo">Qiwigram</div>
+    <div class="boot__bar"><i></i></div>
+    <!-- Что происходит прямо сейчас. Полоска сама по себе не сообщает
+         ничего: и живая загрузка, и намертво вставшая выглядят одинаково. -->
+    <div class="boot__step" id="boot-step">запускаюсь…</div>
+    <!-- Сюда падает текст любой ошибки на старте. Без этого сорванная
+         загрузка выглядит как бесконечно ползущая полоска, и понять,
+         что случилось, нельзя ни пользователю, ни мне. -->
+    <div class="boot__error" id="boot-error" hidden></div>
+</div>
+
+<!-- ========================= ВХОД / РЕГИСТРАЦИЯ ========================= -->
+<div id="auth" class="auth" hidden>
+    <div class="auth__card">
+        <a class="auth__back" href="index.html" aria-label="На главную">←</a>
+
+        <h1 class="auth__logo">Qiwigram</h1>
+        <p class="auth__tagline">Свобода слова</p>
+
+        <div class="auth__tabs" role="tablist">
+            <button class="auth__tab is-active" data-tab="login" role="tab">Вход</button>
+            <button class="auth__tab" data-tab="register" role="tab">Регистрация</button>
+        </div>
+
+        <!-- ------------------------------ вход ------------------------------ -->
+        <form id="form-login" class="auth__form" autocomplete="on">
+            <label class="field">
+                <span class="field__label">Ник</span>
+                <input name="username" type="text" inputmode="latin" autocapitalize="none"
+                       autocomplete="username" spellcheck="false" placeholder="kiwi" required>
+            </label>
+
+            <label class="field">
+                <span class="field__label">Пароль</span>
+                <input name="password" type="password" autocomplete="current-password"
+                       placeholder="••••••••" required>
+            </label>
+
+            <p class="auth__error" data-error hidden></p>
+
+            <button class="btn btn--primary" type="submit">Войти</button>
+        </form>
+
+        <!-- -------------------------- регистрация --------------------------- -->
+        <form id="form-register" class="auth__form" autocomplete="on" hidden>
+            <label class="field">
+                <span class="field__label">Ник</span>
+                <input name="username" type="text" inputmode="latin" autocapitalize="none"
+                       autocomplete="username" spellcheck="false" placeholder="kiwi"
+                       minlength="3" maxlength="32" required>
+                <span class="field__hint" data-username-hint>Латиница, цифры и подчёркивание, от 3 до 32 символов</span>
+            </label>
+
+            <label class="field">
+                <span class="field__label">Пароль</span>
+                <input name="password" type="password" autocomplete="new-password"
+                       placeholder="••••••••" minlength="6" required>
+                <span class="field__hint">Минимум 6 символов. Забудешь — восстановить можно будет только по почте</span>
+            </label>
+
+            <label class="field">
+                <span class="field__label">Почта</span>
+                <input name="email" type="email" autocomplete="email" placeholder="можно любую">
+                <span class="field__hint">Не проверяется и никому не видна. Нужна только чтобы вернуть аккаунт, если забудешь пароль</span>
+            </label>
+
+            <p class="auth__error" data-error hidden></p>
+
+            <button class="btn btn--primary" type="submit">Создать аккаунт</button>
+        </form>
+    </div>
+</div>
+
+<!-- ============================ МЕССЕНДЖЕР ============================ -->
+<div id="app" class="app" hidden>
+
+    <!-- ------------------------------ слева ------------------------------ -->
+    <aside class="sidebar" id="sidebar">
+        <header class="sidebar__head">
+            <button class="icon-btn" id="btn-menu" aria-label="Меню">
+                <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+            </button>
+            <div class="search">
+                <svg class="search__icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                <input id="search" type="search" placeholder="Поиск" autocomplete="off" spellcheck="false">
+            </div>
+        </header>
+
+        <div class="chat-list" id="chat-list"></div>
+
+        <div class="search-results" id="search-results" hidden></div>
+
+        <button class="fab" id="btn-new" aria-label="Новый чат">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+    </aside>
+
+    <!-- ------------------------------ справа ----------------------------- -->
+    <main class="chat" id="chat">
+        <div class="chat__empty" id="chat-empty">
+            <div class="chat__empty-badge">Выбери чат, чтобы начать</div>
+        </div>
+
+        <div class="chat__inner" id="chat-inner" hidden>
+            <header class="chat__head">
+                <button class="icon-btn chat__back" id="btn-back" aria-label="Назад">
+                    <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+                </button>
+                <div class="avatar" id="chat-avatar"></div>
+                <div class="chat__title">
+                    <div class="chat__name" id="chat-name"></div>
+                    <div class="chat__status" id="chat-status"></div>
+                </div>
+                <button class="icon-btn" id="btn-chat-info" aria-label="О чате">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+                </button>
+            </header>
+
+            <div class="messages" id="messages">
+                <div class="messages__top" id="messages-top"></div>
+                <div class="messages__list" id="messages-list"></div>
+            </div>
+
+            <div class="reply-bar" id="reply-bar" hidden>
+                <div class="reply-bar__line"></div>
+                <div class="reply-bar__body">
+                    <div class="reply-bar__name" id="reply-name"></div>
+                    <div class="reply-bar__text" id="reply-text"></div>
+                </div>
+                <button class="icon-btn" id="reply-cancel" aria-label="Отменить">
+                    <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                </button>
+            </div>
+
+            <div class="attach-preview" id="attach-preview" hidden></div>
+
+            <footer class="composer" id="composer">
+                <button class="icon-btn" id="btn-attach" aria-label="Прикрепить">
+                    <svg viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5 5 0 01-7-7l8.5-8.6a3.3 3.3 0 114.7 4.7l-8.5 8.5a1.7 1.7 0 11-2.3-2.3l7.9-7.9"/></svg>
+                </button>
+                <input type="file" id="file-input" accept="image/*,video/*" multiple hidden>
+
+                <div class="composer__input" id="input" contenteditable="true"
+                     role="textbox" aria-multiline="true" data-placeholder="Сообщение"></div>
+
+                <button class="icon-btn composer__toggle" id="btn-spoiler"
+                        title="Спойлер: размыть, пока не нажмут" aria-label="Спойлер" hidden>
+                    <svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+
+                <button class="icon-btn composer__toggle" id="btn-once"
+                        title="Просмотр один раз: после открытия вложение сгорит" aria-label="Один раз" hidden>
+                    <svg viewBox="0 0 24 24"><path d="M12 3s5 4.2 5 9a5 5 0 01-10 0c0-1.7.7-3.2 1.5-4.3"/><path d="M12 21a3 3 0 003-3c0-2-3-4.5-3-4.5S9 16 9 18a3 3 0 003 3z"/></svg>
+                </button>
+
+                <button class="send-btn" id="btn-send" aria-label="Отправить">
+                    <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 8 6 8z"/></svg>
+                </button>
+            </footer>
+        </div>
+    </main>
+</div>
+
+<!-- ============================== ШТОРКА ============================== -->
+<div class="drawer-scrim" id="drawer-scrim" hidden></div>
+<nav class="drawer" id="drawer" hidden>
+    <div class="drawer__head">
+        <div class="avatar avatar--lg" id="me-avatar"></div>
+        <div class="drawer__name" id="me-name"></div>
+        <div class="drawer__username" id="me-username"></div>
+    </div>
+
+    <div class="drawer__section">
+        <div class="drawer__label">Тема</div>
+        <div class="theme-row">
+            <button class="theme-chip" data-theme-set="dark">
+                <i style="background:#17212b"></i><span>Тёмная</span>
+            </button>
+            <button class="theme-chip" data-theme-set="light">
+                <i style="background:#ffffff"></i><span>Светлая</span>
+            </button>
+            <button class="theme-chip" data-theme-set="violet">
+                <i style="background:linear-gradient(135deg,#7b3fe4,#b06ef5)"></i><span>Фиолетовая</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="drawer__section">
+        <button class="drawer__item" id="btn-new-group">
+            <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 19a6.5 6.5 0 0113 0"/><path d="M17 11h5M19.5 8.5v5"/></svg>
+            Создать группу
+        </button>
+        <button class="drawer__item" id="btn-new-channel">
+            <svg viewBox="0 0 24 24"><path d="M3 10v4h4l6 4V6L7 10H3z"/><path d="M17 9a4 4 0 010 6"/></svg>
+            Создать канал
+        </button>
+        <button class="drawer__item" id="btn-edit-profile">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0115 0"/></svg>
+            Профиль
+        </button>
+    </div>
+
+    <div class="drawer__section drawer__section--bottom">
+        <button class="drawer__item drawer__item--danger" id="btn-logout">
+            <svg viewBox="0 0 24 24"><path d="M10 5H5v14h5"/><path d="M15 8l4 4-4 4M19 12H9"/></svg>
+            Выйти
+        </button>
+    </div>
+</nav>
+
+<!-- ============================== ОКНА ============================== -->
+<div class="modal-scrim" id="modal-scrim" hidden>
+    <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+</div>
+
+<!-- Просмотр медиа во весь экран -->
+<div class="viewer" id="viewer" hidden>
+    <button class="viewer__close" id="viewer-close" aria-label="Закрыть">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <div class="viewer__stage" id="viewer-stage"></div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<!-- Порядок важен: библиотека и настройки — обычными скриптами, они
+     выполняются сразу; модуль приложения браузер откладывает до конца
+     разбора страницы, поэтому к его запуску window.supabase уже на месте. -->
+<script>window.qiwiStep && qiwiStep("разметка загружена")</script>
+<script src="assets/vendor/supabase.js"></script>
+<script>window.qiwiStep && qiwiStep("библиотека: " + (window.supabase ? "есть" : "НЕТ"))</script>
+<script src="assets/js/config.js"></script>
+<script>window.qiwiStep && qiwiStep("настройки: " + (window.QIWI ? "есть" : "НЕТ") + ", жду модули")</script>
+<script type="module" src="assets/js/app.js"></script>
+</body>
+</html>

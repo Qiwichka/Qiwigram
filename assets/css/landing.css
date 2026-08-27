@@ -1,0 +1,295 @@
+/* landing.css — главная страница Qiwigram */
+
+:root {
+    --violet: #8b5cf6;
+    --violet-deep: #6d28d9;
+    --ink: #ffffff;
+    --ink-dim: rgba(255, 255, 255, 0.62);
+    --ink-faint: rgba(255, 255, 255, 0.32);
+    --bg: #000000;
+}
+
+* { box-sizing: border-box; }
+
+html {
+    scroll-behavior: smooth;
+    /* Полоса прокрутки на тёмном фоне светлой быть не должна */
+    color-scheme: dark;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ============================== ЭКРАН 1 ============================== */
+
+.hero {
+    position: relative;
+    /* dvh, а не vh: на мобильных Safari адресная строка съедает vh и низ
+       экрана вместе с кнопкой уезжает под неё */
+    height: 100dvh;
+    min-height: 520px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.hero__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    /* бублик можно крутить пальцем, поэтому холст ловит указатель;
+       браузер не должен параллельно скроллить страницу */
+    touch-action: none;
+}
+
+.hero__ui {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    /* кнопка садится в нижнюю треть, чтобы не налезать на надпись,
+       которая нарисована по центру холста */
+    padding-bottom: clamp(72px, 14vh, 140px);
+    /* всё, кроме самой кнопки, пропускает клики на холст — иначе нижняя
+       треть экрана перестала бы крутить бублик */
+    pointer-events: none;
+}
+
+.hero__sub {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+}
+
+/* ------------------------------ кнопка ------------------------------ */
+
+.try-btn {
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 42px;
+    border-radius: 20px;
+    background: #ffffff;
+    color: #000000;
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-decoration: none;
+    white-space: nowrap;
+    box-shadow:
+        0 0 0 0 rgba(255, 255, 255, 0.35),
+        0 18px 50px rgba(0, 0, 0, 0.55);
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.3, 1),
+                box-shadow 0.25s ease;
+}
+
+.try-btn:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow:
+        0 0 0 8px rgba(255, 255, 255, 0.08),
+        0 22px 60px rgba(0, 0, 0, 0.6);
+}
+
+.try-btn:active { transform: translateY(0) scale(0.98); }
+
+.try-btn--big {
+    padding: 24px 56px;
+    font-size: 18px;
+    border-radius: 24px;
+}
+
+/* --------------------------- подсказка вниз --------------------------- */
+
+.scroll-hint {
+    position: absolute;
+    bottom: 26px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    width: 22px;
+    height: 34px;
+    border: 1.5px solid rgba(255, 255, 255, 0.25);
+    border-radius: 12px;
+    pointer-events: none;
+}
+
+.scroll-hint span {
+    position: absolute;
+    top: 7px;
+    left: 50%;
+    width: 3px;
+    height: 6px;
+    margin-left: -1.5px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.55);
+    animation: wheel 1.8s ease-in-out infinite;
+}
+
+@keyframes wheel {
+    0%, 100% { transform: translateY(0); opacity: 1; }
+    60%      { transform: translateY(11px); opacity: 0; }
+}
+
+/* Запасная надпись, когда WebGL не поднялся. Стекла не будет, но экран
+   не должен остаться чёрной пустотой без единого слова. */
+.hero__fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    font-size: clamp(44px, 13vw, 130px);
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.04em;
+    background: radial-gradient(90% 60% at 50% 45%, rgba(139, 92, 246, 0.22), transparent 70%);
+    pointer-events: none;
+}
+
+.noscript {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    background: #000;
+    padding: 24px;
+}
+
+/* ============================== МАНИФЕСТ ============================== */
+
+.manifesto {
+    position: relative;
+    /* фиолетовое свечение, уходящее вниз по странице — единственное место,
+       где на чёрном появляется цвет бренда */
+    background:
+        radial-gradient(120% 60% at 50% 0%, rgba(139, 92, 246, 0.16), transparent 70%),
+        var(--bg);
+}
+
+.block {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: clamp(90px, 16vh, 170px) 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.block__num {
+    margin: 0 0 22px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: var(--violet);
+}
+
+.block h2 {
+    margin: 0 0 26px;
+    font-size: clamp(38px, 7.5vw, 68px);
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+}
+
+.block__text {
+    margin: 0;
+    max-width: 54ch;
+    font-size: clamp(16px, 2.2vw, 19px);
+    line-height: 1.65;
+    color: var(--ink-dim);
+}
+
+/* Блок про границы намеренно приглушён: это оговорка, а не обещание,
+   и выглядеть как остальные лозунги он не должен */
+.block--honest h2 { color: var(--ink-dim); }
+.block--honest .block__num { color: var(--ink-faint); }
+.block--honest .block__text { color: var(--ink-faint); }
+
+/* ------------------------------- финал ------------------------------- */
+
+.cta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 30px;
+    padding: clamp(110px, 20vh, 200px) 24px;
+    text-align: center;
+}
+
+.cta__title {
+    margin: 0;
+    font-size: clamp(56px, 14vw, 130px);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+}
+
+.cta__note {
+    margin: 0;
+    font-size: 14px;
+    color: var(--ink-faint);
+}
+
+.footer {
+    padding: 40px 24px 56px;
+    text-align: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.footer p {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    color: var(--ink-faint);
+}
+
+/* ============================== появление ============================== */
+
+.reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+.reveal.is-visible {
+    opacity: 1;
+    transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .scroll-hint span { animation: none; }
+    .try-btn { transition: none; }
+}

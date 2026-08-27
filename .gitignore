@@ -1,0 +1,8 @@
+# Журналы локального сервера — отладочный мусор, не код
+tools/_client.log
+tools/_access.log
+
+# Системное
+Thumbs.db
+desktop.ini
+.DS_Store

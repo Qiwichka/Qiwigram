@@ -1,0 +1,44 @@
+{
+  "name": "Qiwigram",
+  "short_name": "Qiwigram",
+  "description": "Анонимный мессенджер. Без телефона, без имени, без правил.",
+  "lang": "ru",
+  "dir": "ltr",
+  "id": "/",
+  "start_url": "app.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#0e1621",
+  "theme_color": "#0e1621",
+  "categories": ["social", "communication"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Написать",
+      "short_name": "Написать",
+      "url": "app.html",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

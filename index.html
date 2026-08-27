@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Qiwigram — свобода слова</title>
+<meta name="description" content="Анонимный мессенджер. Без телефона, без имени, без правил.">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="assets/css/landing.css">
+</head>
+<body>
+
+<!-- ============================ ЭКРАН 1 ============================ -->
+<section class="hero">
+    <!-- Надпись «СВОБОДА СЛОВА» живёт ВНУТРИ холста: она подложка, которую
+         преломляет стекло. Отдельным <h1> её сделать нельзя — бублик тогда
+         преломлял бы пустоту. Для поисковиков и читалок дублируем скрыто. -->
+    <canvas id="glass" class="hero__canvas"></canvas>
+    <h1 class="visually-hidden">Свобода слова</h1>
+
+    <div class="hero__ui">
+        <a class="try-btn" href="app.html">ПОПРОБОВАТЬ!</a>
+        <p class="hero__sub">Анонимный мессенджер</p>
+    </div>
+
+    <div class="scroll-hint" aria-hidden="true">
+        <span></span>
+    </div>
+
+    <noscript>
+        <div class="noscript">
+            <h1>Свобода слова</h1>
+            <p>Для работы Qiwigram нужен JavaScript.</p>
+        </div>
+    </noscript>
+</section>
+
+<!-- ============================ МАНИФЕСТ ============================ -->
+<main class="manifesto">
+
+    <section class="block reveal">
+        <p class="block__num">01</p>
+        <h2>Ни телефона.<br>Ни имени.<br>Ни паспорта.</h2>
+        <p class="block__text">
+            Придумай ник, придумай пароль — всё. Почту спросим, но проверять не будем:
+            она нужна только чтобы ты смог вернуть себе аккаунт, если забудешь пароль.
+            Больше мы о тебе не знаем ничего.
+        </p>
+    </section>
+
+    <section class="block reveal">
+        <p class="block__num">02</p>
+        <h2>Правил<br>нет.</h2>
+        <p class="block__text">
+            Здесь нет модератора, который решит, что тебе можно говорить, а что нельзя.
+            Нет алгоритма, который спрячет твой пост. Нет списка запрещённых слов.
+            Есть ты, собеседник и то, что вы друг другу пишете.
+        </p>
+    </section>
+
+    <section class="block reveal">
+        <p class="block__num">03</p>
+        <h2>Сказал —<br>и растворилось.</h2>
+        <p class="block__text">
+            Включи таймер на чат: сутки, неделя, месяц — и переписка стирает себя сама.
+            Фото и видео можно отправить с пометкой «один просмотр»: посмотрел — и его больше нет.
+            А спойлер размывает картинку, пока по ней не ткнут пальцем.
+        </p>
+    </section>
+
+    <section class="block reveal">
+        <p class="block__num">04</p>
+        <h2>Личка.<br>Группы.<br>Каналы.</h2>
+        <p class="block__text">
+            Всё, к чему ты привык, только без вопросов о том, кто ты такой.
+            Занимай юзернейм, пока его не занял кто-то другой, собирай своих
+            и говори что думаешь.
+        </p>
+    </section>
+
+    <section class="block block--honest reveal">
+        <p class="block__num">05</p>
+        <h2>Честно<br>о границах.</h2>
+        <p class="block__text">
+            Анонимно — значит, что другие пользователи не узнают, кто ты.
+            Это не значит, что тебя невозможно вычислить в принципе:
+            интернет видит твой IP-адрес, как и на любом другом сайте.
+            Мы не обещаем того, чего не можем дать.
+        </p>
+    </section>
+
+    <section class="cta reveal">
+        <h2 class="cta__title">Ну?</h2>
+        <a class="try-btn try-btn--big" href="app.html">ПОПРОБОВАТЬ!</a>
+        <p class="cta__note">Регистрация занимает двадцать секунд</p>
+    </section>
+
+    <footer class="footer">
+        <p>Qiwigram</p>
+    </footer>
+</main>
+
+<script src="assets/js/glass.js"></script>
+<script src="assets/js/landing.js"></script>
+</body>
+</html>
