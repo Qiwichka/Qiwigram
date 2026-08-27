@@ -357,8 +357,11 @@ async function refreshChats() {
     if (S.chat) {
         const fresh = S.chats.find((c) => c.chat_id === S.chat.chat_id)
         if (fresh) {
+            const wasRead = S.chat.peer_read_at
             S.chat = fresh
             renderChatHeader()
+            // собеседник дочитал — галочки в ленте должны стать двойными
+            if (fresh.peer_read_at !== wasRead) renderMessages()
         }
     }
 }
@@ -637,6 +640,15 @@ function renderMessages() {
     const list = $("#messages-list")
     list.innerHTML = ""
 
+    /* Плашка про шифрование. Люди не верят на слово, что переписку нельзя
+       прочитать, — и правильно делают. Пусть об этом говорит сам чат,
+       как в телеге у секретных чатов, а не только README на гитхабе. */
+    if (S.chat && S.chat.encrypted) {
+        list.append(el("div", { class: "system system--lock" },
+            "🔒 Сообщения и файлы в этом чате зашифрованы. Ключ есть только у вас — " +
+            "ни сервер, ни владелец сайта прочитать их не могут."))
+    }
+
     let lastDay = ""
     let prev = null
 
@@ -692,6 +704,7 @@ function messageNode(m, { isFirst, isLast }) {
     if (m.edited_at) meta.append(el("span", { class: "msg__edited", text: "изм. " }))
     if (m.expires_at) meta.append(el("span", { text: "⏱ " }))
     meta.append(el("span", { text: fmtTime(m.created_at) }))
+    if (out) meta.append(ticks(m))
     bubble.append(meta)
 
     node.append(bubble)
@@ -706,6 +719,31 @@ function messageNode(m, { isFirst, isLast }) {
         bubble.oncontextmenu = (e) => { e.preventDefault(); messageMenu(m) }
     }
 
+    return node
+}
+
+/*
+ * Галочки. Одна — доставлено, две — собеседник прочитал.
+ *
+ * Отдельной таблицы «кто что прочитал» нет и не нужно: у каждого участника
+ * в chat_members уже стоит отметка о последнем прочтении. Если она позже
+ * времени сообщения — значит до него добрались. Две галочки бесплатно.
+ *
+ * В группах показываем одну: «прочитали все» пришлось бы считать по каждому
+ * участнику отдельно, а «прочитал хоть кто-то» вводит в заблуждение.
+ */
+function ticks(m) {
+    const read = S.chat.type === "dm" &&
+        S.chat.peer_read_at &&
+        new Date(S.chat.peer_read_at) >= new Date(m.created_at)
+
+    const node = el("span", {
+        class: "msg__ticks" + (read ? " is-read" : ""),
+        title: read ? "Прочитано" : "Отправлено",
+        html: read
+            ? '<svg viewBox="0 0 20 14"><path d="M1 8l3.5 3.5L11 5"/><path d="M8 8l3.5 3.5L19 3"/></svg>'
+            : '<svg viewBox="0 0 20 14"><path d="M3 8l3.5 3.5L15 3"/></svg>'
+    })
     return node
 }
 

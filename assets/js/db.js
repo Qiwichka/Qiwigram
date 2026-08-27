@@ -402,7 +402,21 @@ export async function updateProfile(patch) {
    ============================================================================ */
 
 export async function chatOverview() {
-    return unwrap(await sb.rpc("chat_overview")) || []
+    const rows = unwrap(await sb.rpc("chat_overview")) || []
+
+    /* Предпросмотр расшифровывается здесь, а не на сервере — у него ключа
+       нет. Ошибка на одном чате не должна ронять весь список, поэтому
+       каждый разбирается отдельно. */
+    for (const row of rows) {
+        if (!row.last_enc) continue
+        try {
+            const key = await chatKey(row)
+            row.last_body = key ? await cr.decryptText(key, row.last_enc) : null
+        } catch {
+            row.last_body = null
+        }
+    }
+    return rows
 }
 
 export async function chatById(id) {

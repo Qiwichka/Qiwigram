@@ -720,6 +720,27 @@ svg {
 
 .msg__edited { font-style: italic; }
 
+/* Галочки доставки. Прочитанное подсвечиваем — иначе одна галочка от двух
+   на мелком шрифте почти не отличается. */
+.msg__ticks {
+    display: inline-flex;
+    margin-left: 1px;
+}
+.msg__ticks svg {
+    width: 17px;
+    height: 12px;
+    stroke-width: 2.2;
+}
+.msg__ticks.is-read { color: #4fc3f7; }
+
+/* Плашка про шифрование над первым сообщением */
+.system--lock {
+    max-width: 90%;
+    line-height: 1.45;
+    background: var(--accent-soft);
+    color: var(--text-dim);
+}
+
 /* --------------------------------- ответ --------------------------------- */
 
 .quote {
