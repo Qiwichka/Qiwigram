@@ -1182,6 +1182,41 @@ svg {
 .switch input:checked + .switch__box { background: var(--accent); border-color: transparent; }
 .switch input:checked + .switch__box::after { transform: translateX(17px); background: #fff; }
 
+/* --------------------------- выбор аватарки --------------------------- */
+
+.avatar-pick {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 4px 0 18px;
+}
+
+.avatar-pick__btn {
+    position: relative;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    border-radius: 50%;
+    cursor: pointer;
+}
+.avatar-pick__btn:hover { filter: brightness(1.08); }
+/* подсказка, что по кружку можно нажать — иначе его принимают за картинку */
+.avatar-pick__btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px dashed var(--line);
+    pointer-events: none;
+}
+
+.avatar-pick__side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
 .opt-list { display: grid; gap: 2px; margin-top: 8px; }
 .opt {
     display: flex;

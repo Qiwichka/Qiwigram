@@ -65,6 +65,10 @@ async function boot() {
 
     step("читаю профиль")
     S.me = await db.myProfile()
+    if (S.me) {
+        step("открываю ключи")
+        await ensureKeys()
+    }
     if (!S.me) {
         // сессия жива, а профиля нет — такое бывает, если регистрацию
         // оборвало на полпути; проще выйти и начать заново
@@ -72,6 +76,49 @@ async function boot() {
         return showAuth()
     }
     await startApp()
+}
+
+/*
+ * Открыть закрытый ключ.
+ *
+ * Обычно он лежит на этом устройстве и берётся молча. Пароль спрашиваем
+ * только когда взять негде: новое устройство, почищенное хранилище, или
+ * аккаунт заведён до появления шифрования и пары ключей у него ещё нет.
+ *
+ * Отказ не запрещает пользоваться приложением: чаты откроются, но вместо
+ * текста будет замок. Запирать человека наглухо из-за этого нельзя.
+ */
+async function ensureKeys() {
+    if (await db.loadKeys().catch(() => false)) return true
+
+    const password = await modal((box, close) => {
+        const input = el("input", { type: "password", autocomplete: "current-password", placeholder: "••••••••" })
+        box.append(
+            el("h2", { text: "Пароль для расшифровки" }),
+            el("p", { class: "modal__sub", text:
+                "Переписка зашифрована ключом, который лежит только у тебя. " +
+                "Введи пароль от аккаунта, чтобы его открыть — на сервер он не уходит." }),
+            el("label", { class: "field" }, el("span", { class: "field__label", text: "Пароль" }), input),
+            el("div", { class: "modal__actions" },
+                el("button", { class: "btn btn--ghost", onclick: () => close(null) }, "Потом"),
+                el("button", { class: "btn btn--primary", onclick: () => close(input.value) }, "Открыть")
+            )
+        )
+        input.onkeydown = (e) => { if (e.key === "Enter") close(input.value) }
+    })
+
+    if (!password) {
+        toast("Переписка останется зашифрованной", true)
+        return false
+    }
+
+    try {
+        await db.loadKeys(password)
+        return true
+    } catch (e) {
+        toast(e.message, true)
+        return false
+    }
 }
 
 function showAuth() {
@@ -206,7 +253,12 @@ function wireApp() {
     $("#btn-edit-profile").onclick = () => { closeDrawer(); editProfileDialog() }
     $("#btn-logout").onclick = async () => {
         closeDrawer()
-        if (!(await confirmBox({ title: "Выйти из аккаунта?", ok: "Выйти", danger: true }))) return
+        if (!(await confirmBox({
+            title: "Выйти из аккаунта?",
+            text: "Ключ расшифровки сотрётся с этого устройства. При следующем входе понадобится пароль.",
+            ok: "Выйти", danger: true
+        }))) return
+        db.forgetBlobs()
         await db.logout()
         location.reload()
     }
@@ -330,6 +382,9 @@ function chatRow(c) {
     let preview = ""
     if (c.last_has_media) preview = "📷 Медиа"
     else if (c.last_body) preview = c.last_body
+    // У зашифрованного чата сервер предпросмотра не отдаёт — он его не знает.
+    // Наличие сообщения выдаёт только отправитель.
+    else if (c.last_sender_id) preview = "🔒 Зашифровано"
     else preview = "Нет сообщений"
 
     // В группе и канале полезно видеть, кто написал
@@ -472,7 +527,7 @@ async function openChat(chatId) {
     $("#messages-top").innerHTML = '<div class="spinner"></div>'
 
     try {
-        S.messages = await db.loadMessages(chatId)
+        S.messages = await db.loadMessages(S.chat)
     } catch (e) {
         toast(e.message, true)
     }
@@ -497,6 +552,13 @@ async function openChat(chatId) {
     // В группе у каждого сообщения подписан автор, а имена приходят
     // отдельным запросом — не ждём его, лента дорисует подписи сама
     if (row.type !== "dm") primePeople(chatId)
+
+    /* Раздать ключ тем, кто вошёл после нас. Сервер этого сделать не может —
+       ключа у него нет, — поэтому раздаёт тот из участников, кто открыл чат
+       и ключ имеет. Молча, в фоне. */
+    if (row.type !== "dm" && row.encrypted) {
+        db.shareKeyWithNewcomers(row).catch(() => { /* не срочно, повторим при следующем открытии */ })
+    }
 
     wireMessagesScroll()
 }
@@ -526,6 +588,7 @@ function renderChatHeader() {
     else if (c.type === "channel") status = c.username ? "@" + c.username : "канал"
     else status = c.username ? "@" + c.username : "группа"
 
+    if (c.encrypted) status += " · 🔒"
     if (c.ttl_seconds) status += " · ⏱ " + ttlLabel(c.ttl_seconds)
     $("#chat-status").textContent = status
 }
@@ -544,7 +607,7 @@ function wireMessagesScroll() {
         const before = S.messages[0].created_at
         const prevHeight = box.scrollHeight
         try {
-            const older = await db.loadMessages(S.chat.chat_id, before)
+            const older = await db.loadMessages(S.chat, before)
             if (older.length < CFG.PAGE_SIZE) S.reachedTop = true
             if (older.length) {
                 S.messages = older.concat(S.messages)
@@ -681,15 +744,27 @@ function mediaNode(m) {
     const box = el("div", { class: `media media--${Math.min(items.length, 4)}` })
 
     items.forEach((item) => {
-        const url = db.mediaUrl(item.path)
         const cell = el("div", { class: "media__item" + (item.spoiler ? " is-spoiler" : "") })
 
+        /* Адрес добывается асинхронно: зашифрованный файл надо сначала
+           скачать и расшифровать в браузере. Поэтому элемент создаётся
+           пустым и наполняется, когда данные готовы. */
+        let url = null
+        const surface = item.type === "video"
+            ? el("video", { preload: "metadata", playsinline: true, muted: true })
+            : el("img", { alt: "", loading: "lazy" })
+        cell.append(surface)
+
+        db.mediaSrc(item, S.chat).then((u) => {
+            url = u
+            surface.src = u
+        }).catch((e) => {
+            cell.append(el("div", { class: "media__hint", text: e.message }))
+        })
+
         if (item.type === "video") {
-            cell.append(el("video", { src: url, preload: "metadata", playsinline: true, muted: true }))
             cell.append(el("div", { class: "media__play" },
                 el("span", { html: '<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" fill="currentColor"/></svg>' })))
-        } else {
-            cell.append(el("img", { src: url, alt: "", loading: "lazy" }))
         }
 
         if (item.spoiler) cell.append(el("div", { class: "media__hint", text: "Нажми, чтобы открыть" }))
@@ -702,6 +777,7 @@ function mediaNode(m) {
                 cell.classList.remove("is-spoiler")
                 return
             }
+            if (!url) return toast("Файл ещё грузится")
             if (m.view_once && m.sender_id !== S.me.id) {
                 const ok = await confirmBox({
                     title: "Открыть один раз?",
@@ -809,7 +885,14 @@ async function messageMenu(m) {
    ВХОДЯЩИЕ
    ============================================================================ */
 
-function onIncoming(row) {
+async function onIncoming(raw) {
+    if (!S.chat || raw.chat_id !== S.chat.chat_id) return
+    if (S.messages.some((x) => x.id === raw.id)) return
+
+    // Живое обновление приходит из базы как есть — то есть зашифрованным
+    const row = await db.decryptIncoming(raw, S.chat)
+
+    // Пока расшифровывали, чат могли переключить
     if (!S.chat || row.chat_id !== S.chat.chat_id) return
     if (S.messages.some((x) => x.id === row.id)) return
 
@@ -826,11 +909,17 @@ function onIncoming(row) {
     renderTyping()
 }
 
-function onUpdated(row) {
-    const i = S.messages.findIndex((x) => x.id === row.id)
+async function onUpdated(raw) {
+    const i = S.messages.findIndex((x) => x.id === raw.id)
     if (i < 0) return
-    if (row.deleted) return removeMessage(row.id)
-    S.messages[i] = row
+    if (raw.deleted) return removeMessage(raw.id)
+
+    // body у правки приходит зашифрованным ровно так же, как у новой
+    const row = raw.body != null && !raw.enc ? raw : await db.decryptIncoming(raw, S.chat)
+
+    const j = S.messages.findIndex((x) => x.id === row.id)
+    if (j < 0) return
+    S.messages[j] = row
     renderMessages()
 }
 
@@ -1029,7 +1118,7 @@ async function doSend() {
         input.textContent = ""
         renderReplyBar()
         try {
-            const updated = await db.editMessage(target.id, body)
+            const updated = await db.editMessage(target.id, body, S.chat)
             onUpdated(updated)
         } catch (e) { toast(e.message, true) }
         return
@@ -1059,12 +1148,12 @@ async function doSend() {
         if (files.length) {
             toast(files.length === 1 ? "Загружаю…" : `Загружаю ${files.length} ${plural(files.length, "файл", "файла", "файлов")}…`)
             media = await Promise.all(files.map((a) =>
-                db.uploadMedia(a.file, { spoiler: a.spoiler })))
+                db.uploadMedia(a.file, { spoiler: a.spoiler, chat: S.chat })))
             files.forEach((a) => URL.revokeObjectURL(a.url))
         }
 
         const row = await db.sendMessage({
-            chatId: S.chat.chat_id,
+            chat: S.chat,
             body,
             media,
             replyTo,
@@ -1205,6 +1294,11 @@ async function createChatDialog(type) {
     if (!result) return
     try {
         const id = await db.createChat({ type, ...result })
+
+        // Закрытый чат шифруется, и ключ ему заводит создатель — больше
+        // никто этого сделать не может, у сервера ключа нет
+        if (!result.isPublic) await db.initGroupKey(id)
+
         await refreshChats()
         openChat(id)
         toast(isChannel ? "Канал создан" : "Группа создана")
@@ -1239,6 +1333,9 @@ async function chatInfoDialog() {
             c.type !== "dm"
                 ? el("p", { class: "modal__sub", text: `${people.length} ${plural(people.length, "участник", "участника", "участников")}` })
                 : null,
+            el("p", { class: "modal__sub", text: c.encrypted
+                ? "🔒 Сквозное шифрование. Текст и файлы шифруются у тебя в браузере ключом, которого на сервере нет. Владелец сайта прочитать переписку не может — только увидеть, что она была."
+                : "🌐 Без шифрования: это публичный чат, его содержимое открыто по замыслу." }),
             el("div", { class: "opt-list" },
                 el("button", { class: "opt", onclick: () => close("ttl") },
                     "⏱  Самоуничтожение: " + (c.ttl_seconds ? ttlLabel(c.ttl_seconds) : "выключено")),
@@ -1247,6 +1344,9 @@ async function chatInfoDialog() {
                     : null,
                 c.type !== "dm"
                     ? el("button", { class: "opt", onclick: () => close("people") }, "👥  Участники")
+                    : null,
+                (c.type !== "dm" && admin)
+                    ? el("button", { class: "opt", onclick: () => close("avatar") }, "🖼  Фото чата")
                     : null,
                 c.type !== "dm"
                     ? el("button", { class: "opt", style: "color:var(--danger)", onclick: () => close("leave") }, "🚪  Выйти")
@@ -1261,6 +1361,7 @@ async function chatInfoDialog() {
     if (action === "ttl") return ttlDialog()
     if (action === "invite") return inviteDialog()
     if (action === "people") return peopleDialog(people, admin)
+    if (action === "avatar") return chatAvatarDialog()
 
     if (action === "leave") {
         if (!(await confirmBox({ title: "Выйти из чата?", ok: "Выйти", danger: true }))) return
@@ -1370,13 +1471,73 @@ async function peopleDialog(people, admin) {
     })
 }
 
+/**
+ * Кружок, по которому выбирают картинку. Возвращает узел и способ узнать,
+ * что выбрали: сам файл или пометку «убрать».
+ *
+ * Предпросмотр показывается сразу, ещё до отправки — иначе непонятно,
+ * как именно обрежется картинка, и человек выбирает вслепую.
+ */
+function avatarPicker(name, currentUrl) {
+    const state = { file: null, remove: false }
+
+    const preview = avatarNode(name, currentUrl, "avatar--lg")
+    const input = el("input", { type: "file", accept: "image/*", hidden: true })
+
+    input.onchange = () => {
+        const file = input.files && input.files[0]
+        if (!file) return
+        state.file = file
+        state.remove = false
+        // старую ссылку освобождать не надо: она живёт до закрытия окна
+        const url = URL.createObjectURL(file)
+        preview.innerHTML = ""
+        preview.style.background = "transparent"
+        preview.append(el("img", { src: url, alt: "" }))
+    }
+
+    const clear = el("button", {
+        class: "btn btn--ghost",
+        style: "width:auto;padding:8px 14px;font-size:13px",
+        onclick: () => {
+            state.file = null
+            state.remove = true
+            preview.innerHTML = ""
+            preview.style.background = avatarColor(name)
+            preview.textContent = initials(name)
+        }
+    }, "Убрать")
+
+    const wrap = el("div", { class: "avatar-pick" },
+        el("button", {
+            class: "avatar-pick__btn",
+            onclick: () => input.click(),
+            title: "Выбрать картинку"
+        }, preview),
+        el("div", { class: "avatar-pick__side" },
+            el("button", {
+                class: "btn btn--ghost",
+                style: "width:auto;padding:8px 14px;font-size:13px",
+                onclick: () => input.click()
+            }, "Выбрать фото"),
+            currentUrl ? clear : null
+        ),
+        input
+    )
+
+    return { node: wrap, state }
+}
+
 async function editProfileDialog() {
+    const pick = avatarPicker(S.me.display_name || S.me.username, S.me.avatar_url)
+
     const result = await modal((box, close) => {
         const name = el("input", { type: "text", value: S.me.display_name || "" })
         const bio = el("input", { type: "text", value: S.me.bio || "", placeholder: "необязательно" })
         box.append(
             el("h2", { text: "Профиль" }),
             el("p", { class: "modal__sub", text: "Ник @" + S.me.username + " изменить нельзя — на него ссылаются другие." }),
+            pick.node,
             el("label", { class: "field" }, el("span", { class: "field__label", text: "Имя" }), name),
             el("label", { class: "field" }, el("span", { class: "field__label", text: "О себе" }), bio),
             el("div", { class: "modal__actions" },
@@ -1389,9 +1550,50 @@ async function editProfileDialog() {
         )
     })
     if (!result) return
+
     try {
+        if (pick.state.file) {
+            toast("Загружаю фото…")
+            result.avatar_url = await db.uploadAvatar(pick.state.file, S.me.avatar_url)
+        } else if (pick.state.remove) {
+            result.avatar_url = null
+            await db.clearAvatarFile(S.me.avatar_url)
+        }
         S.me = await db.updateProfile(result)
         renderMe()
+        renderChatList()
+        toast("Сохранено")
+    } catch (e) { toast(e.message, true) }
+}
+
+/** Фото группы или канала — то же самое, но для чата. */
+async function chatAvatarDialog() {
+    const c = S.chat
+    const pick = avatarPicker(chatTitle(c), c.avatar_url)
+
+    const ok = await modal((box, close) => {
+        box.append(
+            el("h2", { text: "Фото чата" }),
+            el("p", { class: "modal__sub", text: "Его увидят все участники." }),
+            pick.node,
+            el("div", { class: "modal__actions" },
+                el("button", { class: "btn btn--ghost", onclick: () => close(false) }, "Отмена"),
+                el("button", { class: "btn btn--primary", onclick: () => close(true) }, "Сохранить")
+            )
+        )
+    })
+    if (!ok) return
+
+    try {
+        if (pick.state.file) {
+            toast("Загружаю фото…")
+            await db.setChatAvatar(c.chat_id, pick.state.file, c.avatar_url)
+        } else if (pick.state.remove) {
+            await db.clearChatAvatar(c.chat_id, c.avatar_url)
+        } else return
+
+        await refreshChats()
+        renderChatHeader()
         toast("Сохранено")
     } catch (e) { toast(e.message, true) }
 }

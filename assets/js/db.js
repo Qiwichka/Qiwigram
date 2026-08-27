@@ -1,5 +1,7 @@
 /* db.js — всё общение с Supabase. Выше этого файла SQL и ключи не поднимаются. */
 
+import * as cr from "./crypto.js"
+
 /*
  * Библиотека лежит в самом проекте (assets/vendor/supabase.js) и подключается
  * обычным <script> до модулей. Раньше она тянулась из чужого CDN прямо
@@ -113,6 +115,207 @@ export async function usernameFree(name) {
     return data === true
 }
 
+/* ============================================================================
+   КЛЮЧИ
+
+   Закрытый ключ живёт в памяти вкладки и в localStorage этого устройства.
+   На сервере он есть только в зашифрованном паролем виде.
+   ============================================================================ */
+
+let myPrivate = null                 // CryptoKey
+let myPublicJwk = null
+const chatKeys = new Map()           // chat_id -> CryptoKey
+const pubKeyCache = new Map()        // user_id -> jwk
+
+export function keysReady() { return myPrivate !== null }
+
+/** Первый заход: заводим пару и раскладываем её по местам. */
+async function createKeysFor(userId, password) {
+    const pair = await cr.generateKeyPair()
+    const pubJwk = await cr.exportPublic(pair)
+    const privJwk = await cr.exportPrivate(pair)
+    const guarded = await cr.protectPrivateKey(privJwk, password)
+
+    unwrap(await sb.from("profiles").update({ public_key: pubJwk }).eq("id", userId))
+    unwrap(await sb.from("user_private").update({ private_key_enc: guarded }).eq("id", userId))
+
+    myPrivate = pair.privateKey
+    myPublicJwk = pubJwk
+    cr.cachePrivateKey(privJwk)
+}
+
+/**
+ * Достать закрытый ключ. Сначала с устройства, потом — расшифровав паролем.
+ * Возвращает false, если ключа нет и пароля не дали: тогда переписку видно
+ * не будет, но само приложение работает.
+ */
+export async function loadKeys(password = null) {
+    const session = await currentSession()
+    if (!session) return false
+
+    const cached = cr.readCachedPrivateKey()
+    if (cached) {
+        try {
+            myPrivate = await cr.importPrivate(cached)
+            const { data } = await sb.from("profiles")
+                .select("public_key").eq("id", session.user.id).single()
+            myPublicJwk = data && data.public_key
+            if (myPublicJwk) return true
+        } catch { /* ключ на устройстве испорчен — пойдём длинным путём */ }
+    }
+
+    const { data: priv } = await sb.from("user_private")
+        .select("private_key_enc").eq("id", session.user.id).single()
+
+    // Ключей нет вовсе — аккаунт заведён до появления шифрования
+    if (!priv || !priv.private_key_enc) {
+        if (!password) return false
+        await createKeysFor(session.user.id, password)
+        return true
+    }
+
+    if (!password) return false
+
+    const jwk = await cr.unlockPrivateKey(priv.private_key_enc, password)
+    myPrivate = await cr.importPrivate(jwk)
+    cr.cachePrivateKey(jwk)
+
+    const { data: prof } = await sb.from("profiles")
+        .select("public_key").eq("id", session.user.id).single()
+    myPublicJwk = prof && prof.public_key
+    return true
+}
+
+export function dropKeys() {
+    myPrivate = null
+    myPublicJwk = null
+    chatKeys.clear()
+    cr.forgetPrivateKey()
+}
+
+async function publicKeyOf(userId) {
+    if (pubKeyCache.has(userId)) return pubKeyCache.get(userId)
+    const { data } = await sb.rpc("public_key_of", { _user: userId })
+    pubKeyCache.set(userId, data || null)
+    return data || null
+}
+
+/**
+ * Ключ конкретного чата. Для лички считается на месте, для группы
+ * достаётся завёрнутым и разворачивается. null — читать нечем.
+ */
+export async function chatKey(chat) {
+    if (!chat || !chat.encrypted || !myPrivate) return null
+
+    const id = chat.chat_id || chat.id
+    if (chatKeys.has(id)) return chatKeys.get(id)
+
+    let key = null
+
+    if (chat.type === "dm") {
+        const peer = chat.peer_id || (await otherMember(id))
+        if (!peer) return null
+        const pub = await publicKeyOf(peer)
+        // Собеседник ещё не заходил после появления шифрования
+        if (!pub) return null
+        key = await cr.dmKey(myPrivate, pub)
+    } else {
+        const session = await currentSession()
+        const { data: row } = await sb.from("chat_keys")
+            .select("wrapped, wrapped_by")
+            .eq("chat_id", id).eq("user_id", session.user.id).maybeSingle()
+
+        if (row) {
+            const pub = await publicKeyOf(row.wrapped_by)
+            if (!pub) return null
+            try {
+                key = await cr.unwrapGroupKey(row.wrapped, myPrivate, pub)
+            } catch { return null }
+        }
+    }
+
+    if (key) chatKeys.set(id, key)
+    return key
+}
+
+/*
+ * Почему ключа нет. Причин ровно три, и они требуют разных действий от
+ * человека — общее «нет ключа» не даёт ему понять, что делать.
+ */
+export async function whyNoKey(chat) {
+    if (!myPrivate) {
+        return "Твой ключ не открыт. Выйди и войди заново, введя пароль"
+    }
+    if (chat.type === "dm") {
+        const peer = chat.peer_id || (await otherMember(chat.chat_id || chat.id))
+        if (peer && !(await publicKeyOf(peer))) {
+            return "Собеседник ещё ни разу не заходил после включения шифрования — пусть войдёт, и переписка заработает"
+        }
+        return "Не удалось согласовать ключ с собеседником"
+    }
+    if (chat.key_created) {
+        return "Ключ группы тебе ещё не передали. Попроси любого участника открыть чат — передача произойдёт сама"
+    }
+    return "У группы ещё нет ключа: его заводит создатель, когда впервые откроет чат"
+}
+
+async function otherMember(chatId) {
+    const session = await currentSession()
+    const { data } = await sb.from("chat_members")
+        .select("user_id").eq("chat_id", chatId).neq("user_id", session.user.id).limit(1)
+    return data && data[0] ? data[0].user_id : null
+}
+
+/** Создать ключ новой закрытой группы и завернуть его себе. */
+export async function initGroupKey(chatId) {
+    if (!myPrivate || !myPublicJwk) return null
+    const session = await currentSession()
+    const key = await cr.newGroupKey()
+    const wrapped = await cr.wrapGroupKey(key, myPrivate, myPublicJwk)
+
+    unwrap(await sb.from("chat_keys").insert({
+        chat_id: chatId, user_id: session.user.id,
+        wrapped_by: session.user.id, wrapped
+    }))
+    unwrap(await sb.from("chats").update({ key_created: true }).eq("id", chatId))
+
+    chatKeys.set(chatId, key)
+    return key
+}
+
+/**
+ * Раздать ключ тем участникам, у кого его ещё нет.
+ * Вызывается у того, кто ключ уже имеет: сервер раздать не может — у него
+ * ключа нет и быть не должно.
+ */
+export async function shareKeyWithNewcomers(chat) {
+    if (!myPrivate || !chat || chat.type === "dm" || !chat.encrypted) return 0
+    const id = chat.chat_id || chat.id
+    const key = await chatKey(chat)
+    if (!key) return 0
+
+    const { data: pending } = await sb.rpc("members_without_key", { _chat: id })
+    if (!pending || !pending.length) return 0
+
+    const session = await currentSession()
+    const rows = []
+    for (const person of pending) {
+        try {
+            rows.push({
+                chat_id: id,
+                user_id: person.id,
+                wrapped_by: session.user.id,
+                wrapped: await cr.wrapGroupKey(key, myPrivate, person.public_key)
+            })
+        } catch { /* у кого-то битый открытый ключ — пропускаем его одного */ }
+    }
+    if (!rows.length) return 0
+
+    // Мог успеть кто-то другой: конфликт по первичному ключу здесь норма
+    await sb.from("chat_keys").upsert(rows, { onConflict: "chat_id,user_id", ignoreDuplicates: true })
+    return rows.length
+}
+
 export async function register({ username, password, email }) {
     if (!CFG.USERNAME_RE.test(username)) {
         throw new Error("Ник: латиница, цифры и подчёркивание, от 3 до 32 символов")
@@ -141,6 +344,12 @@ export async function register({ username, password, email }) {
     // Подтверждение почты выключено, поэтому сессия приходит сразу.
     // Если её вдруг нет — входим обычным путём.
     if (!data.session) await login({ username, password })
+
+    // Пара ключей заводится сразу и только здесь: пароль есть на руках
+    // ровно в этот момент и больше нигде не появится.
+    const session = await currentSession()
+    if (session) await createKeysFor(session.user.id, password)
+
     return data
 }
 
@@ -150,10 +359,20 @@ export async function login({ username, password }) {
         password
     })
     if (error) throw new Error(humanError(error))
+
+    // Пароль нужен, чтобы расшифровать закрытый ключ. Другого случая
+    // его узнать у нас не будет — дальше живём на сохранённой сессии.
+    try {
+        await loadKeys(password)
+    } catch (e) {
+        // Вход состоялся; без ключа не видно переписки, но не входа
+        console.warn("ключи не открылись:", e.message)
+    }
     return data
 }
 
 export async function logout() {
+    dropKeys()
     await sb.auth.signOut()
 }
 
@@ -263,13 +482,34 @@ export async function publicChats(q) {
    ============================================================================ */
 
 const MSG_FIELDS =
-    "id, chat_id, sender_id, body, media, reply_to, view_once, created_at, edited_at, expires_at, deleted"
+    "id, chat_id, sender_id, body, enc, media, reply_to, view_once, created_at, edited_at, expires_at, deleted"
+
+/*
+ * Расшифровка ленты. Открытый текст в body остаётся у публичных каналов и
+ * у сообщений, написанных до включения шифрования, — их просто пропускаем.
+ *
+ * Если ключа нет, сообщение не исчезает: вместо текста человек видит
+ * честное «нечем расшифровать». Молчаливо пустой пузырь выглядел бы как
+ * потеря сообщения.
+ */
+async function decryptRows(rows, chat) {
+    const key = await chatKey(chat)
+    for (const m of rows) {
+        if (!m.enc) continue
+        if (!key) { m.body = "🔒 Нечем расшифровать"; m.undecryptable = true; continue }
+        const text = await cr.decryptText(key, m.enc)
+        if (text === null) { m.body = "🔒 Не расшифровалось"; m.undecryptable = true }
+        else m.body = text
+    }
+    return rows
+}
 
 /**
  * Страница сообщений. Тянем от новых к старым (before — курсор по времени),
  * а отдаём в обратном порядке, потому что рисуются они сверху вниз.
  */
-export async function loadMessages(chatId, before = null) {
+export async function loadMessages(chat, before = null) {
+    const chatId = chat.chat_id || chat.id || chat
     let q = sb.from("messages").select(MSG_FIELDS)
         .eq("chat_id", chatId)
         .eq("deleted", false)
@@ -280,11 +520,19 @@ export async function loadMessages(chatId, before = null) {
 
     const rows = unwrap(await q) || []
     const now = Date.now()
-    return rows
+    const live = rows
         // просроченное могло ещё не дойти до уборки на сервере —
         // показывать его нельзя ни секунды
         .filter((m) => !m.expires_at || new Date(m.expires_at).getTime() > now)
         .reverse()
+
+    return decryptRows(live, chat)
+}
+
+/** Расшифровать одно сообщение, пришедшее живым обновлением. */
+export async function decryptIncoming(row, chat) {
+    const [one] = await decryptRows([row], chat)
+    return one
 }
 
 export async function loadMessage(id) {
@@ -293,24 +541,48 @@ export async function loadMessage(id) {
     return data
 }
 
-export async function sendMessage({ chatId, body, media, replyTo, viewOnce }) {
+export async function sendMessage({ chat, body, media, replyTo, viewOnce }) {
     const session = await currentSession()
     if (!session) throw new Error("Не выполнен вход")
+    const chatId = chat.chat_id || chat.id
 
-    return unwrap(await sb.from("messages").insert({
+    const row = {
         chat_id: chatId,
         sender_id: session.user.id,
         body: body || null,
         media: media && media.length ? media : null,
         reply_to: replyTo || null,
         view_once: !!viewOnce
-    }).select(MSG_FIELDS).single())
+    }
+
+    if (chat.encrypted && body) {
+        const key = await chatKey(chat)
+        if (!key) throw new Error(await whyNoKey(chat))
+        row.enc = await cr.encryptText(key, body)
+        // Открытый текст в базу не уходит: ради этого всё и затевалось
+        row.body = null
+    }
+
+    const saved = unwrap(await sb.from("messages").insert(row).select(MSG_FIELDS).single())
+    // Себе показываем то, что написали, а не шифротекст
+    if (row.enc) saved.body = body
+    return saved
 }
 
-export async function editMessage(id, body) {
-    return unwrap(await sb.from("messages")
-        .update({ body, edited_at: new Date().toISOString() })
-        .eq("id", id).select(MSG_FIELDS).single())
+export async function editMessage(id, body, chat) {
+    const patch = { body, enc: null, edited_at: new Date().toISOString() }
+
+    if (chat && chat.encrypted) {
+        const key = await chatKey(chat)
+        if (!key) throw new Error(await whyNoKey(chat))
+        patch.enc = await cr.encryptText(key, body)
+        patch.body = null
+    }
+
+    const saved = unwrap(await sb.from("messages")
+        .update(patch).eq("id", id).select(MSG_FIELDS).single())
+    if (patch.enc) saved.body = body
+    return saved
 }
 
 export async function deleteMessage(id) {
@@ -327,6 +599,41 @@ export async function burnMessage(id) {
 
 export function mediaUrl(path) {
     return sb.storage.from("media").getPublicUrl(path).data.publicUrl
+}
+
+/*
+ * Ссылка, которую можно поставить в <img src>. Для незашифрованного чата это
+ * прямой адрес в хранилище, для зашифрованного — файл скачивается, тут же
+ * расшифровывается и превращается в локальную ссылку blob:. В хранилище при
+ * этом лежит нечитаемый набор байт.
+ *
+ * Расшифрованное держим в кэше: одна и та же картинка попадается и в ленте,
+ * и в полноэкранном просмотре, а расшифровка видео на телефоне не бесплатна.
+ */
+const blobUrls = new Map()
+
+export async function mediaSrc(item, chat) {
+    if (!item.iv) return mediaUrl(item.path)
+
+    if (blobUrls.has(item.path)) return blobUrls.get(item.path)
+
+    const key = await chatKey(chat)
+    if (!key) throw new Error("🔒 Нечем расшифровать")
+
+    const { data, error } = await sb.storage.from("media").download(item.path)
+    if (error) throw new Error(humanError(error))
+
+    const mime = item.type === "video" ? (item.mime || "video/mp4") : (item.mime || "image/jpeg")
+    const plain = await cr.decryptBlob(key, await data.arrayBuffer(), item.iv, mime)
+    const url = URL.createObjectURL(plain)
+    blobUrls.set(item.path, url)
+    return url
+}
+
+/** Освободить память под расшифрованными файлами при выходе. */
+export function forgetBlobs() {
+    for (const url of blobUrls.values()) URL.revokeObjectURL(url)
+    blobUrls.clear()
 }
 
 /*
@@ -362,6 +669,88 @@ async function shrinkImage(file, maxSide = 1600, quality = 0.82) {
     return { blob, w, h }
 }
 
+/*
+ * Аватарка: обрезаем по центру в квадрат и ужимаем до 256 пикселей.
+ *
+ * Именно обрезаем, а не вписываем: кружок всё равно покажет квадрат
+ * по центру, и если картинку просто сжать, портрет растянет в блин.
+ * 256 хватает с запасом — самый крупный кружок в интерфейсе 68 пикселей,
+ * даже на экране с тройной плотностью это 204.
+ */
+async function squareAvatar(file) {
+    const bitmap = await createImageBitmap(file).catch(() => null)
+    if (!bitmap) throw new Error("Не удалось прочитать картинку")
+
+    const side = Math.min(bitmap.width, bitmap.height)
+    const sx = (bitmap.width - side) / 2
+    const sy = (bitmap.height - side) / 2
+
+    const size = 256
+    const canvas = document.createElement("canvas")
+    canvas.width = size
+    canvas.height = size
+    canvas.getContext("2d").drawImage(bitmap, sx, sy, side, side, 0, 0, size, size)
+    bitmap.close()
+
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.86))
+    if (!blob) throw new Error("Не удалось обработать картинку")
+    return blob
+}
+
+/** Путь в хранилище из публичной ссылки — чтобы убрать старый файл. */
+function pathFromPublicUrl(url) {
+    if (!url) return null
+    const marker = "/storage/v1/object/public/media/"
+    const i = url.indexOf(marker)
+    return i < 0 ? null : url.slice(i + marker.length)
+}
+
+/*
+ * Аватарки НЕ шифруются, и это осознанно: профиль виден всем вошедшим, его
+ * находят поиском по нику. Шифровать то, что и так показывают каждому, —
+ * бессмысленная работа, которая ещё и сломала бы отрисовку списка чатов.
+ */
+export async function uploadAvatar(file, oldUrl = null) {
+    const session = await currentSession()
+    if (!session) throw new Error("Не выполнен вход")
+    if (!file.type.startsWith("image/")) throw new Error("Нужна картинка")
+
+    const blob = await squareAvatar(file)
+    const path = `${session.user.id}/avatar-${crypto.randomUUID()}.jpg`
+
+    const { error } = await sb.storage.from("media").upload(path, blob, {
+        contentType: "image/jpeg",
+        cacheControl: "31536000",
+        upsert: false
+    })
+    if (error) throw new Error(humanError(error))
+
+    // Старую убираем сразу: хранилища всего гигабайт, а аватарку меняют часто
+    const old = pathFromPublicUrl(oldUrl)
+    if (old) await sb.storage.from("media").remove([old]).catch(() => {})
+
+    return mediaUrl(path)
+}
+
+/** Фото группы или канала. Ставит только владелец или администратор. */
+export async function setChatAvatar(chatId, file, oldUrl = null) {
+    const url = await uploadAvatar(file, oldUrl)
+    unwrap(await sb.from("chats").update({ avatar_url: url }).eq("id", chatId))
+    return url
+}
+
+export async function clearChatAvatar(chatId, oldUrl = null) {
+    unwrap(await sb.from("chats").update({ avatar_url: null }).eq("id", chatId))
+    const old = pathFromPublicUrl(oldUrl)
+    if (old) await sb.storage.from("media").remove([old]).catch(() => {})
+}
+
+/** Снять аватарку профиля вместе с файлом. */
+export async function clearAvatarFile(oldUrl) {
+    const old = pathFromPublicUrl(oldUrl)
+    if (old) await sb.storage.from("media").remove([old]).catch(() => {})
+}
+
 /** Размеры видео нужны заранее, иначе лента дёргается при подгрузке. */
 function videoSize(file) {
     return new Promise((resolve) => {
@@ -379,7 +768,7 @@ function videoSize(file) {
     })
 }
 
-export async function uploadMedia(file, { spoiler = false } = {}) {
+export async function uploadMedia(file, { spoiler = false, chat = null } = {}) {
     const session = await currentSession()
     if (!session) throw new Error("Не выполнен вход")
 
@@ -398,19 +787,34 @@ export async function uploadMedia(file, { spoiler = false } = {}) {
         ({ blob, w, h } = await shrinkImage(file))
     }
 
-    const ext = isVideo ? (file.name.split(".").pop() || "mp4").toLowerCase()
-                        : (blob === file ? (file.name.split(".").pop() || "jpg").toLowerCase() : "jpg")
+    const mime = blob.type || file.type
+    let ext = isVideo ? (file.name.split(".").pop() || "mp4").toLowerCase()
+                      : (blob === file ? (file.name.split(".").pop() || "jpg").toLowerCase() : "jpg")
+
+    // Шифруем ПЕРЕД отправкой: в хранилище не должно попасть ничего читаемого
+    let iv = null
+    if (chat && chat.encrypted) {
+        const key = await chatKey(chat)
+        if (!key) throw new Error(await whyNoKey(chat))
+        const sealed = await cr.encryptBlob(key, blob)
+        blob = sealed.blob
+        iv = sealed.iv
+        // расширение скрывает тип содержимого, да и файл больше не картинка
+        ext = "bin"
+    }
+
     // Папка обязана называться id пользователя — так требует правило хранилища
     const path = `${session.user.id}/${crypto.randomUUID()}.${ext}`
 
     const { error } = await sb.storage.from("media").upload(path, blob, {
-        contentType: blob.type || file.type,
+        contentType: iv ? "application/octet-stream" : mime,
         cacheControl: "31536000",
         upsert: false
     })
     if (error) throw new Error(humanError(error))
 
-    return { path, type: isVideo ? "video" : "image", w, h, spoiler, size: blob.size }
+    // mime сохраняем в описании: после шифрования его больше неоткуда взять
+    return { path, type: isVideo ? "video" : "image", w, h, spoiler, size: blob.size, iv, mime }
 }
 
 /* ============================================================================
