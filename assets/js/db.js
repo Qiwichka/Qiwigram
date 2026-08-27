@@ -75,7 +75,10 @@ const MESSAGES = {
     not_admin: "Нужны права администратора",
     invite_required: "Чат закрытый — нужна ссылка-приглашение",
     no_such_user: "Такого пользователя нет",
-    cannot_dm_self: "Нельзя написать самому себе"
+    cannot_dm_self: "Нельзя написать самому себе",
+    /* Одинаковый текст в обе стороны намеренно: по разным сообщениям можно
+       было бы выяснить, заблокировал тебя человек или ты его. */
+    blocked: "Переписка с этим человеком недоступна"
 }
 
 export function humanError(err) {
@@ -503,7 +506,7 @@ export async function publicChats(q) {
    ============================================================================ */
 
 const MSG_FIELDS =
-    "id, chat_id, sender_id, body, enc, media, reply_to, view_once, created_at, edited_at, expires_at, deleted"
+    "id, chat_id, sender_id, body, enc, media, reply_to, view_once, forwarded_from, created_at, edited_at, expires_at, deleted"
 
 /*
  * Расшифровка ленты. Открытый текст в body остаётся у публичных каналов и
@@ -562,7 +565,7 @@ export async function loadMessage(id) {
     return data
 }
 
-export async function sendMessage({ chat, body, media, replyTo, viewOnce }) {
+export async function sendMessage({ chat, body, media, replyTo, viewOnce, forwardedFrom }) {
     const session = await currentSession()
     if (!session) throw new Error("Не выполнен вход")
     const chatId = chat.chat_id || chat.id
@@ -573,7 +576,8 @@ export async function sendMessage({ chat, body, media, replyTo, viewOnce }) {
         body: body || null,
         media: media && media.length ? media : null,
         reply_to: replyTo || null,
-        view_once: !!viewOnce
+        view_once: !!viewOnce,
+        forwarded_from: forwardedFrom || null
     }
 
     if (chat.encrypted && body) {
@@ -614,6 +618,77 @@ export async function burnMessage(id) {
     return unwrap(await sb.rpc("burn_message", { _msg: id }))
 }
 
+/*
+ * Пересылка. Содержимое шифруется ЗАНОВО ключом чата-получателя: у каждого
+ * чата свой ключ, и просто скопировать старый шифротекст нельзя — на той
+ * стороне его нечем открыть.
+ *
+ * Отсюда же следует ограничение: переслать можно только то, что ты сам
+ * можешь прочитать. Расшифровать чужое, не имея ключа, не выйдет.
+ */
+export async function forwardMessage(msg, fromChat, toChat, authorName) {
+    if (msg.undecryptable) throw new Error("Это сообщение не расшифровано — переслать нечего")
+
+    return sendMessage({
+        chat: toChat,
+        body: msg.body || null,
+        // вложения лежат в хранилище зашифрованными ключом исходного чата,
+        // поэтому пересылаются только вместе с текстом-описанием
+        media: msg.media && !msg.media.some((m) => m.iv) ? msg.media : null,
+        forwardedFrom: authorName
+    })
+}
+
+/* ============================================================================
+   РЕАКЦИИ
+   ============================================================================ */
+
+export async function loadReactions(ids) {
+    if (!ids || !ids.length) return new Map()
+    const rows = unwrap(await sb.rpc("reactions_for", { _ids: ids })) || []
+
+    const byMessage = new Map()
+    for (const r of rows) {
+        if (!byMessage.has(r.message_id)) byMessage.set(r.message_id, [])
+        byMessage.get(r.message_id).push({ emoji: r.emoji, n: r.n, mine: r.mine })
+    }
+    return byMessage
+}
+
+export async function toggleReaction(messageId, emoji, mine) {
+    const session = await currentSession()
+    if (!session) throw new Error("Не выполнен вход")
+
+    if (mine) {
+        return unwrap(await sb.from("reactions").delete()
+            .eq("message_id", messageId).eq("user_id", session.user.id).eq("emoji", emoji))
+    }
+    return unwrap(await sb.from("reactions")
+        .insert({ message_id: messageId, user_id: session.user.id, emoji }))
+}
+
+/* ============================================================================
+   БЛОКИРОВКИ
+   ============================================================================ */
+
+export async function blockUser(userId) {
+    return unwrap(await sb.rpc("block_user", { _user: userId }))
+}
+
+export async function unblockUser(userId) {
+    return unwrap(await sb.rpc("unblock_user", { _user: userId }))
+}
+
+export async function myBlocks() {
+    return unwrap(await sb.rpc("my_blocks")) || []
+}
+
+export async function isBlockedByMe(userId) {
+    const { data, error } = await sb.rpc("is_blocked_by_me", { _user: userId })
+    if (error) return false
+    return data === true
+}
+
 /* ============================================================================
    ФАЙЛЫ
    ============================================================================ */
@@ -644,7 +719,10 @@ export async function mediaSrc(item, chat) {
     const { data, error } = await sb.storage.from("media").download(item.path)
     if (error) throw new Error(humanError(error))
 
-    const mime = item.type === "video" ? (item.mime || "video/mp4") : (item.mime || "image/jpeg")
+    // тип нужен обязательно: без него браузер не поймёт, что за blob,
+    // и не станет ни показывать картинку, ни проигрывать звук
+    const mime = item.mime ||
+        (item.type === "video" ? "video/mp4" : item.type === "audio" ? "audio/webm" : "image/jpeg")
     const plain = await cr.decryptBlob(key, await data.arrayBuffer(), item.iv, mime)
     const url = URL.createObjectURL(plain)
     blobUrls.set(item.path, url)
@@ -789,6 +867,36 @@ function videoSize(file) {
     })
 }
 
+/*
+ * Голосовое. Отдельно от uploadMedia: там картинку жмут и меряют, а здесь
+ * блоб уже готов и мерить нечего — важна только длительность, которую
+ * посчитал сам рекордер.
+ */
+export async function uploadVoice(blob, { seconds, mime, chat = null } = {}) {
+    const session = await currentSession()
+    if (!session) throw new Error("Не выполнен вход")
+
+    let body = blob
+    let iv = null
+    if (chat && chat.encrypted) {
+        const key = await chatKey(chat)
+        if (!key) throw new Error(await whyNoKey(chat))
+        const sealed = await cr.encryptBlob(key, blob)
+        body = sealed.blob
+        iv = sealed.iv
+    }
+
+    const path = `${session.user.id}/${crypto.randomUUID()}.${iv ? "bin" : "webm"}`
+    const { error } = await sb.storage.from("media").upload(path, body, {
+        contentType: iv ? "application/octet-stream" : (mime || "audio/webm"),
+        cacheControl: "31536000",
+        upsert: false
+    })
+    if (error) throw new Error(humanError(error))
+
+    return { path, type: "audio", dur: seconds, size: body.size, iv, mime: mime || "audio/webm" }
+}
+
 export async function uploadMedia(file, { spoiler = false, chat = null } = {}) {
     const session = await currentSession()
     if (!session) throw new Error("Не выполнен вход")
@@ -857,6 +965,15 @@ export function watchChat(chatId, on) {
         .on("postgres_changes",
             { event: "DELETE", schema: "public", table: "messages", filter: `chat_id=eq.${chatId}` },
             (p) => on.remove && on.remove(p.old))
+        /* Реакции фильтровать по чату нельзя — в таблице есть только id
+           сообщения. Приходит всё, что видно по правилам доступа, а нужное
+           отбирает уже клиент по списку загруженных сообщений. */
+        .on("postgres_changes",
+            { event: "*", schema: "public", table: "reactions" },
+            (p) => {
+                const id = (p.new && p.new.message_id) || (p.old && p.old.message_id)
+                if (on.reaction) on.reaction(id)
+            })
         .subscribe()
 
     return () => { sb.removeChannel(ch) }

@@ -248,10 +248,30 @@
                     <div class="chat__name" id="chat-name"></div>
                     <div class="chat__status" id="chat-status"></div>
                 </div>
+                <button class="icon-btn" id="btn-chat-search" aria-label="Поиск в чате">
+                    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                </button>
                 <button class="icon-btn" id="btn-chat-info" aria-label="О чате">
                     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
                 </button>
             </header>
+
+            <!-- Поиск по переписке. Ищет устройство, а не сервер: сервер
+                 не умеет читать зашифрованное. Отсюда и подпись про то,
+                 сколько сообщений уже загружено. -->
+            <div class="chat-search" id="chat-search" hidden>
+                <input id="chat-search-input" type="search" placeholder="Искать в переписке" autocomplete="off">
+                <span class="chat-search__count" id="chat-search-count"></span>
+                <button class="icon-btn" id="chat-search-prev" aria-label="Предыдущее">
+                    <svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg>
+                </button>
+                <button class="icon-btn" id="chat-search-next" aria-label="Следующее">
+                    <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <button class="icon-btn" id="chat-search-close" aria-label="Закрыть">
+                    <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                </button>
+            </div>
 
             <div class="messages" id="messages">
                 <div class="messages__top" id="messages-top"></div>
@@ -298,7 +318,25 @@
                     <svg viewBox="0 0 24 24"><path d="M12 3s5 4.2 5 9a5 5 0 01-10 0c0-1.7.7-3.2 1.5-4.3"/><path d="M12 21a3 3 0 003-3c0-2-3-4.5-3-4.5S9 16 9 18a3 3 0 003 3z"/></svg>
                 </button>
 
-                <button class="send-btn" id="btn-send" aria-label="Отправить">
+                <button class="icon-btn" id="btn-mic" aria-label="Голосовое">
+                    <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/></svg>
+                </button>
+
+                <button class="send-btn" id="btn-send" aria-label="Отправить" hidden>
+                    <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 8 6 8z"/></svg>
+                </button>
+            </footer>
+
+            <!-- Панель записи заменяет собой поле ввода: во время записи
+                 писать всё равно нельзя, а место она занимала бы зря -->
+            <footer class="recorder" id="recorder" hidden>
+                <button class="icon-btn recorder__cancel" id="btn-rec-cancel" aria-label="Отменить">
+                    <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                </button>
+                <span class="recorder__dot"></span>
+                <span class="recorder__time" id="rec-time">0:00</span>
+                <span class="recorder__hint">Идёт запись</span>
+                <button class="send-btn" id="btn-rec-send" aria-label="Отправить">
                     <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 8 6 8z"/></svg>
                 </button>
             </footer>

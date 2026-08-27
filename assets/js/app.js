@@ -1,6 +1,7 @@
 /* app.js — сборка мессенджера */
 
 import * as db from "./db.js"
+import { voiceSupported, startRecording, fmtDuration } from "./voice.js"
 import {
     $, $$, el, linkify, escapeHtml, avatarNode, avatarColor, initials, isOnline,
     fmtTime, fmtListTime, fmtDay, fmtLastSeen, plural,
@@ -33,7 +34,11 @@ const S = {
     filter: "all",       // вкладка списка чатов
     unreadFrom: null,    // отметка о прочтении на момент открытия чата
     fresh: new Set(),    // id сообщений, которые надо показать с анимацией
-    newWhileAway: 0      // пришло, пока человек читал старое
+    newWhileAway: 0,     // пришло, пока человек читал старое
+    reactions: new Map(),// id сообщения -> [{emoji, n, mine}]
+    rec: null,           // идущая запись голосового
+    hits: [],            // найденное поиском по переписке
+    hitAt: -1
 }
 
 /* ============================================================================
@@ -297,6 +302,7 @@ function wireApp() {
 
     wireFilters()
     wireSearch()
+    wireChatSearch()
     wireComposer()
 
     // Аппаратная кнопка «назад» в Android-обёртке должна закрывать чат,
@@ -688,10 +694,18 @@ async function openChat(chatId) {
     scrollToBottom(false)
     db.markRead(chatId).then(scheduleChatsRefresh)
 
+    // реакции подтягиваются отдельно: в самих сообщениях их нет
+    refreshReactions()
+
     S.unsubChat = db.watchChat(chatId, {
         insert: onIncoming,
         update: onUpdated,
-        remove: (old) => removeMessage(old.id)
+        remove: (old) => removeMessage(old.id),
+        reaction: (id) => {
+            // чужие реакции прилетают на любые сообщения, что нам видны —
+            // пересчитываем только если это сообщение открыто сейчас
+            if (S.messages.some((m) => m.id === id)) scheduleReactions()
+        }
     })
     S.typing = db.typingChannel(chatId, S.me, onTyping)
 
@@ -874,6 +888,9 @@ function messageNode(m, { isFirst, isLast }) {
         bubble.append(el("div", { class: "msg__author", text: author }))
     }
 
+    if (m.forwarded_from) {
+        bubble.append(el("div", { class: "msg__author", text: "Переслано от " + m.forwarded_from }))
+    }
     if (m.reply_to) bubble.append(quoteNode(m.reply_to))
     if (m.media && m.media.length) bubble.append(mediaNode(m))
 
@@ -890,6 +907,21 @@ function messageNode(m, { isFirst, isLast }) {
     meta.append(el("span", { text: fmtTime(m.created_at) }))
     if (out) meta.append(ticks(m))
     bubble.append(meta)
+
+    const reacts = S.reactions.get(m.id)
+    if (reacts && reacts.length) {
+        const box = el("div", { class: "reactions" })
+        for (const r of reacts) {
+            box.append(el("button", {
+                class: "reaction" + (r.mine ? " is-mine" : ""),
+                onclick: (e) => { e.stopPropagation(); putReaction(m.id, r.emoji, r.mine) }
+            },
+                el("span", { class: "reaction__emoji", text: r.emoji }),
+                el("span", { text: String(r.n) })
+            ))
+        }
+        bubble.append(box)
+    }
 
     node.append(bubble)
 
@@ -995,6 +1027,13 @@ function mediaNode(m) {
     const box = el("div", { class: `media media--${Math.min(items.length, 4)}` })
 
     items.forEach((item) => {
+        // Голосовое — не плитка в сетке, у него свой вид
+        if (item.type === "audio") {
+            box.classList.remove("media--1", "media--2", "media--3", "media--4")
+            box.append(voiceNode(item))
+            return
+        }
+
         const cell = el("div", { class: "media__item" + (item.spoiler ? " is-spoiler" : "") })
 
         /* Адрес добывается асинхронно: зашифрованный файл надо сначала
@@ -1051,6 +1090,67 @@ function mediaNode(m) {
     }
 
     return box
+}
+
+/*
+ * Голосовое сообщение. Звук грузится и расшифровывается только при первом
+ * нажатии: тянуть все войсы в чате сразу — значит выкачивать мегабайты,
+ * которые никто не собирался слушать.
+ */
+function voiceNode(item) {
+    const fill = el("i", { class: "voice__fill" })
+    const time = el("div", { class: "voice__time", text: fmtDuration(item.dur || 0) })
+    const icon = (playing) => playing
+        ? '<svg viewBox="0 0 24 24"><rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/></svg>'
+        : '<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" fill="currentColor" stroke="none"/></svg>'
+
+    const btn = el("button", { class: "voice__play", html: icon(false) })
+    let audio = null
+    let loading = false
+
+    btn.onclick = async (e) => {
+        e.stopPropagation()
+
+        if (audio) {
+            if (audio.paused) audio.play()
+            else audio.pause()
+            return
+        }
+        if (loading) return
+        loading = true
+        btn.textContent = "…"
+
+        try {
+            const url = await db.mediaSrc(item, S.chat)
+            audio = new Audio(url)
+            audio.onplay = () => { btn.innerHTML = icon(true) }
+            audio.onpause = () => { btn.innerHTML = icon(false) }
+            audio.onended = () => {
+                btn.innerHTML = icon(false)
+                fill.style.width = "0"
+                time.textContent = fmtDuration(item.dur || 0)
+            }
+            audio.ontimeupdate = () => {
+                const total = audio.duration || item.dur || 1
+                fill.style.width = Math.min(100, (audio.currentTime / total) * 100) + "%"
+                time.textContent = fmtDuration(audio.currentTime)
+            }
+            await audio.play()
+        } catch (err) {
+            btn.innerHTML = icon(false)
+            toast(err.message || "Не вышло проиграть", true)
+        } finally {
+            loading = false
+        }
+    }
+
+    return el("div", { class: "voice" },
+        btn,
+        el("div", { class: "voice__body" },
+            el("div", { class: "voice__bar" }, fill),
+            time
+        )
+    )
 }
 
 function showFullMedia(item, url) {
@@ -1175,15 +1275,57 @@ function attachLongPress(node, run) {
 
 /* ----------------------------- меню сообщения ----------------------------- */
 
+/** Быстрые реакции — те же, что предлагает телега первым рядом. */
+const QUICK_REACTIONS = ["👍", "❤️", "🔥", "😂", "😮", "😢", "🙏", "💩"]
+
+async function putReaction(messageId, emoji, mine) {
+    try {
+        await db.toggleReaction(messageId, emoji, mine)
+        await refreshReactions()
+    } catch (e) { toast(e.message, true) }
+}
+
+/* Реакции ставят очередями — по три подряд на одно сообщение. Каждое
+   событие тянуть заново бессмысленно, поэтому они сливаются в один запрос. */
+let reactTimer = 0
+function scheduleReactions() {
+    clearTimeout(reactTimer)
+    reactTimer = setTimeout(refreshReactions, 250)
+}
+
+async function refreshReactions() {
+    if (!S.messages.length) return
+    try {
+        S.reactions = await db.loadReactions(S.messages.map((m) => m.id))
+        renderMessages()
+    } catch { /* реакции — не то, ради чего стоит ругаться на весь экран */ }
+}
+
 async function messageMenu(m) {
     const mine = m.sender_id === S.me.id
     const admin = ["owner", "admin"].includes(S.chat.my_role)
 
     const choice = await modal((box, close) => {
+        // Ряд быстрых реакций поверх меню — как в телеге, чтобы поставить
+        // сердечко за одно нажатие, а не через список пунктов
+        const quick = el("div", { class: "opt-list", style: "display:flex;gap:4px;margin:0 0 14px" })
+        const existing = S.reactions.get(m.id) || []
+        for (const e of QUICK_REACTIONS) {
+            const mineNow = existing.some((r) => r.emoji === e && r.mine)
+            quick.append(el("button", {
+                class: "emoji-panel__btn" + (mineNow ? " is-mine" : ""),
+                style: "flex:1;aspect-ratio:auto;padding:8px 0" +
+                    (mineNow ? ";background:var(--accent-soft)" : ""),
+                onclick: () => { close(null); putReaction(m.id, e, mineNow) }
+            }, e))
+        }
+
         box.append(
             el("h2", { text: "Сообщение" }),
+            quick,
             el("div", { class: "opt-list" },
                 el("button", { class: "opt", onclick: () => close("reply") }, "↩︎  Ответить"),
+                el("button", { class: "opt", onclick: () => close("forward") }, "➦  Переслать"),
                 m.body ? el("button", { class: "opt", onclick: () => close("copy") }, "⧉  Скопировать текст") : null,
                 mine && m.body ? el("button", { class: "opt", onclick: () => close("edit") }, "✎  Изменить") : null,
                 (mine || admin) ? el("button", {
@@ -1192,6 +1334,8 @@ async function messageMenu(m) {
             )
         )
     })
+
+    if (choice === "forward") return forwardDialog(m)
 
     if (choice === "reply") {
         startReply(m)
@@ -1213,6 +1357,53 @@ async function messageMenu(m) {
             removeMessage(m.id)
         } catch (e) { toast(e.message, true) }
     }
+}
+
+/*
+ * Пересылка. Текст шифруется заново ключом чата-получателя — у каждого чата
+ * свой ключ, старый шифротекст там нечем открыть.
+ *
+ * Из-за этого зашифрованные вложения не пересылаются: их пришлось бы скачать,
+ * расшифровать, зашифровать другим ключом и залить заново. Честнее сказать
+ * об этом прямо, чем молча отправить кусок, который не откроется.
+ */
+async function forwardDialog(m) {
+    const targets = S.chats.filter((c) =>
+        c.chat_id !== S.chat.chat_id &&
+        (c.type !== "channel" || ["owner", "admin"].includes(c.my_role))
+    )
+
+    if (!targets.length) return toast("Некуда пересылать — других чатов нет", true)
+
+    const hadEncryptedMedia = !!(m.media && m.media.some((x) => x.iv))
+
+    const target = await modal((box, close) => {
+        box.append(
+            el("h2", { text: "Переслать" }),
+            hadEncryptedMedia
+                ? el("p", { class: "modal__sub", text:
+                    "Вложение переслать нельзя: оно зашифровано ключом этого чата. Уйдёт только текст." })
+                : null
+        )
+        const list = el("div", { class: "opt-list", style: "max-height:46vh;overflow-y:auto" })
+        for (const c of targets) {
+            const row = el("button", { class: "opt", onclick: () => close(c) },
+                avatarNode(chatTitle(c), c.avatar_url, "avatar--sm"),
+                el("span", { style: "flex:1", text: chatTitle(c) })
+            )
+            list.append(row)
+        }
+        box.append(list, el("div", { class: "modal__actions" },
+            el("button", { class: "btn btn--ghost", onclick: () => close(null) }, "Отмена")))
+    })
+
+    if (!target) return
+
+    try {
+        await db.forwardMessage(m, S.chat, target, findName(m.sender_id))
+        toast("Переслано в «" + chatTitle(target) + "»")
+        scheduleChatsRefresh()
+    } catch (e) { toast(e.message, true) }
 }
 
 /* ============================================================================
@@ -1477,6 +1668,20 @@ function wireComposer() {
 
     send.onclick = doSend
 
+    /* Кнопка справа переключается между микрофоном и самолётиком: пустое
+       поле — значит человек собирается говорить, есть текст — отправлять.
+       Так же устроено в телеге и вотсапе. */
+    const syncSendButton = () => {
+        const has = input.innerText.trim().length > 0 || S.attach.length > 0
+        $("#btn-send").hidden = !has
+        $("#btn-mic").hidden = has || !voiceSupported()
+    }
+    input.addEventListener("input", syncSendButton)
+    S.syncSendButton = syncSendButton
+    syncSendButton()
+
+    wireRecorder()
+
     // перетаскивание файлов прямо в окно чата
     const chat = $("#chat")
     chat.addEventListener("dragover", (e) => e.preventDefault())
@@ -1485,6 +1690,147 @@ function wireComposer() {
         if (!S.chat) return
         addAttachments(Array.from(e.dataTransfer.files || []))
     })
+}
+
+/* ============================================================================
+   ПОИСК ПО ПЕРЕПИСКЕ
+
+   Ищет устройство, а не сервер, и только по загруженной части переписки.
+   Причина прямая: сервер хранит шифротекст и искать в нём не может — ни по
+   слову, ни по букве. Это цена шифрования, обойти её нельзя, поэтому под
+   строкой поиска честно написано, сколько сообщений уже подгружено.
+   ============================================================================ */
+
+function clearHits() {
+    S.hits = []
+    S.hitAt = -1
+    $$(".msg.is-hit").forEach((n) => n.classList.remove("is-hit"))
+    $("#chat-search-count").textContent = ""
+}
+
+function gotoHit(i) {
+    if (!S.hits.length) return
+    S.hitAt = (i + S.hits.length) % S.hits.length
+    $$(".msg.is-hit").forEach((n) => n.classList.remove("is-hit"))
+
+    const id = S.hits[S.hitAt]
+    const node = $(`.msg[data-id="${id}"]`)
+    if (node) {
+        node.classList.add("is-hit")
+        node.scrollIntoView({ block: "center", behavior: "smooth" })
+    }
+    $("#chat-search-count").textContent = (S.hitAt + 1) + " / " + S.hits.length
+}
+
+function runChatSearch(q) {
+    clearHits()
+    const needle = q.trim().toLowerCase()
+    if (!needle) return
+
+    S.hits = S.messages
+        .filter((m) => (m.body || "").toLowerCase().includes(needle))
+        .map((m) => m.id)
+
+    if (!S.hits.length) {
+        $("#chat-search-count").textContent = "нет"
+        return
+    }
+    // начинаем с самого свежего совпадения — обычно ищут недавнее
+    gotoHit(S.hits.length - 1)
+}
+
+function wireChatSearch() {
+    const bar = $("#chat-search")
+    const input = $("#chat-search-input")
+
+    const close = () => {
+        bar.hidden = true
+        input.value = ""
+        clearHits()
+    }
+
+    $("#btn-chat-search").onclick = () => {
+        if (!S.chat) return
+        bar.hidden = false
+        input.focus()
+        toast(`Ищу среди ${S.messages.length} загруженных сообщений`)
+    }
+    $("#chat-search-close").onclick = close
+    $("#chat-search-prev").onclick = () => gotoHit(S.hitAt - 1)
+    $("#chat-search-next").onclick = () => gotoHit(S.hitAt + 1)
+
+    let timer = 0
+    input.addEventListener("input", () => {
+        clearTimeout(timer)
+        timer = setTimeout(() => runChatSearch(input.value), 200)
+    })
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") close()
+        if (e.key === "Enter") gotoHit(e.shiftKey ? S.hitAt - 1 : S.hitAt + 1)
+    })
+}
+
+/* ------------------------------ голосовые ------------------------------ */
+
+function showRecorder(on) {
+    $("#recorder").hidden = !on
+    $("#composer").hidden = on
+}
+
+function wireRecorder() {
+    $("#btn-mic").onclick = async () => {
+        if (S.rec) return
+        try {
+            S.rec = await startRecording((sec) => {
+                $("#rec-time").textContent = fmtDuration(sec)
+                // дальше пяти минут никто не слушает, да и место не резиновое
+                if (sec > 300) $("#btn-rec-send").click()
+            })
+            $("#rec-time").textContent = "0:00"
+            showRecorder(true)
+        } catch (e) {
+            toast(e.message, true)
+        }
+    }
+
+    $("#btn-rec-cancel").onclick = () => {
+        if (!S.rec) return
+        S.rec.cancel()
+        S.rec = null
+        showRecorder(false)
+    }
+
+    $("#btn-rec-send").onclick = async () => {
+        if (!S.rec) return
+        const rec = S.rec
+        S.rec = null
+        showRecorder(false)
+
+        let taken
+        try {
+            taken = await rec.stop()
+        } catch {
+            return toast("Запись не удалась", true)
+        }
+        // меньше секунды — это случайное нажатие, а не сообщение
+        if (taken.seconds < 1 || taken.blob.size < 900) {
+            return toast("Слишком короткая запись")
+        }
+
+        try {
+            const item = await db.uploadVoice(taken.blob, {
+                seconds: taken.seconds,
+                mime: taken.mime,
+                chat: S.chat
+            })
+            const row = await db.sendMessage({ chat: S.chat, media: [item] })
+            onIncoming(row)
+            scrollToBottom(true)
+            scheduleChatsRefresh()
+        } catch (e) {
+            toast(e.message, true)
+        }
+    }
 }
 
 function addAttachments(files) {
@@ -1779,6 +2125,12 @@ async function chatInfoDialog() {
     const people = c.type === "dm" ? [] : await db.chatPeople(c.chat_id).catch(() => [])
     people.forEach((p) => peopleCache.set(p.id, p.display_name || p.username))
 
+    // Для лички важно знать, заблокирован ли собеседник — от этого зависит
+    // подпись кнопки. Ошибка тут не должна ломать всё окно.
+    const blocked = c.type === "dm" && c.peer_id
+        ? await db.isBlockedByMe(c.peer_id).catch(() => false)
+        : false
+
     const action = await modal((box, close) => {
         box.append(
             el("h2", { text: chatTitle(c) }),
@@ -1804,12 +2156,38 @@ async function chatInfoDialog() {
                 c.type !== "dm"
                     ? el("button", { class: "opt", style: "color:var(--danger)", onclick: () => close("leave") }, "🚪  Выйти")
                     : null,
+                c.type === "dm"
+                    ? el("button", {
+                        class: "opt",
+                        style: blocked ? "" : "color:var(--danger)",
+                        onclick: () => close("block")
+                    }, blocked ? "🔓  Разблокировать" : "🚫  Заблокировать")
+                    : null,
                 (c.my_role === "owner" && c.type !== "dm")
                     ? el("button", { class: "opt", style: "color:var(--danger)", onclick: () => close("delete") }, "🗑  Удалить навсегда")
                     : null
             )
         )
     })
+
+    if (action === "block") {
+        try {
+            if (blocked) {
+                await db.unblockUser(c.peer_id)
+                toast("Разблокирован")
+            } else {
+                const ok = await confirmBox({
+                    title: "Заблокировать?",
+                    text: "Он больше не сможет тебе написать. Переписка останется, но новых сообщений от него не будет.",
+                    ok: "Заблокировать", danger: true
+                })
+                if (!ok) return
+                await db.blockUser(c.peer_id)
+                toast("Заблокирован")
+            }
+        } catch (e) { toast(e.message, true) }
+        return
+    }
 
     if (action === "ttl") return ttlDialog()
     if (action === "invite") return inviteDialog()
