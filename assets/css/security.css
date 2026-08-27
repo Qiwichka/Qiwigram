@@ -1,0 +1,301 @@
+/* security.css — страница «Как работает шифрование» */
+
+:root {
+    --acid: #00ffc0;
+    --ink: #ffffff;
+    --dim: rgba(255, 255, 255, 0.66);
+    --faint: rgba(255, 255, 255, 0.36);
+    --line: rgba(255, 255, 255, 0.12);
+    --panel: rgba(8, 10, 12, 0.72);
+}
+
+* { box-sizing: border-box; }
+
+html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    background: #000;
+    color: var(--ink);
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+/* Вихрь остаётся на месте при прокрутке: он фон, а не часть потока */
+.bg {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 0;
+    pointer-events: none;
+}
+
+.back {
+    position: fixed;
+    top: max(16px, env(safe-area-inset-top));
+    left: 16px;
+    z-index: 3;
+    padding: 9px 16px;
+    border-radius: 20px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--dim);
+    font-size: 13.5px;
+    font-weight: 600;
+    text-decoration: none;
+    backdrop-filter: blur(10px);
+}
+.back:hover { color: var(--ink); border-color: var(--acid); }
+
+.wrap {
+    position: relative;
+    z-index: 2;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 22px 80px;
+}
+
+/* ------------------------------- шапка ------------------------------- */
+
+.hero {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 90px 0 60px;
+}
+
+.kicker {
+    margin: 0 0 18px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--acid);
+}
+
+.hero h1 {
+    margin: 0 0 26px;
+    font-size: clamp(40px, 9vw, 78px);
+    font-weight: 800;
+    line-height: 1.0;
+    letter-spacing: -0.035em;
+    /* тень, а не панель: заголовок должен читаться поверх подвижного
+       рисунка, но не закрывать его прямоугольником */
+    text-shadow: 0 4px 40px rgba(0, 0, 0, 0.9), 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+
+.lede {
+    max-width: 46ch;
+    margin: 0;
+    font-size: clamp(16px, 2.3vw, 19px);
+    line-height: 1.62;
+    color: var(--dim);
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.9);
+}
+
+/* -------------------------------- шаги -------------------------------- */
+
+.step {
+    display: flex;
+    gap: 22px;
+    margin-bottom: 18px;
+    padding: 28px 26px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--panel);
+    backdrop-filter: blur(14px);
+}
+
+.step__n {
+    flex: none;
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid var(--acid);
+    color: var(--acid);
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.step__body { min-width: 0; }
+
+.step h2 {
+    margin: 4px 0 14px;
+    font-size: clamp(21px, 3.6vw, 27px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.step p {
+    margin: 0 0 12px;
+    font-size: 15.5px;
+    line-height: 1.66;
+    color: var(--dim);
+}
+.step p:last-child { margin-bottom: 0; }
+.step b { color: var(--ink); font-weight: 600; }
+.step i { color: var(--acid); font-style: normal; }
+
+.step--key { border-color: rgba(0, 255, 192, 0.4); }
+
+/* ------------------------------ формула ------------------------------ */
+
+.formula {
+    margin: 18px 0;
+    padding: 20px 16px;
+    border-radius: 14px;
+    background: rgba(0, 255, 192, 0.06);
+    border: 1px dashed rgba(0, 255, 192, 0.3);
+    text-align: center;
+}
+
+.formula__row {
+    font-size: clamp(13px, 2.6vw, 16px);
+    font-weight: 600;
+    color: var(--ink);
+    /* длинные подписи на узком экране должны переноситься,
+       а не растягивать страницу вбок */
+    overflow-wrap: anywhere;
+}
+.formula__row span { color: var(--acid); }
+
+.formula__eq {
+    margin: 8px 0;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--faint);
+}
+
+/* -------------------------------- код -------------------------------- */
+
+.code {
+    margin: 14px 0;
+    padding: 16px 18px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid var(--line);
+    color: var(--acid);
+    font-family: "SF Mono", ui-monospace, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.65;
+    /* шифротекст длинный — пусть прокручивается внутри себя,
+       а не рвёт вёрстку страницы */
+    overflow-x: auto;
+    white-space: pre;
+}
+.code .null { color: var(--faint); }
+
+/* ------------------------------ границы ------------------------------ */
+
+.limits {
+    margin: 46px 0 18px;
+    padding: 30px 26px;
+    border: 1px solid rgba(255, 170, 80, 0.35);
+    border-radius: 18px;
+    background: var(--panel);
+    backdrop-filter: blur(14px);
+}
+
+.limits h2 {
+    margin: 0 0 12px;
+    font-size: clamp(23px, 4vw, 30px);
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    color: #ffb765;
+}
+
+.limits__lede {
+    margin: 0 0 26px;
+    font-size: 15.5px;
+    line-height: 1.62;
+    color: var(--dim);
+}
+
+.limit {
+    padding: 16px 0;
+    border-top: 1px solid var(--line);
+}
+.limit h3 {
+    margin: 0 0 7px;
+    font-size: 16.5px;
+    font-weight: 650;
+}
+.limit p {
+    margin: 0;
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--dim);
+}
+
+/* ------------------------------ проверка ------------------------------ */
+
+.check {
+    margin-top: 18px;
+    padding: 30px 26px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--panel);
+    backdrop-filter: blur(14px);
+    text-align: center;
+}
+.check h2 {
+    margin: 0 0 12px;
+    font-size: clamp(22px, 4vw, 28px);
+    font-weight: 800;
+    letter-spacing: -0.025em;
+}
+.check p {
+    margin: 0 0 20px;
+    font-size: 15px;
+    line-height: 1.62;
+    color: var(--dim);
+}
+.check code {
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    font-family: "SF Mono", ui-monospace, Consolas, monospace;
+    font-size: 13px;
+    color: var(--acid);
+}
+.check__link {
+    display: inline-block;
+    padding: 14px 26px;
+    border-radius: 14px;
+    background: var(--acid);
+    color: #001a14;
+    font-size: 15px;
+    font-weight: 700;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+.check__link:hover { filter: brightness(1.1); }
+
+.foot {
+    margin-top: 40px;
+    text-align: center;
+}
+.foot a {
+    color: var(--faint);
+    font-size: 14px;
+    text-decoration: none;
+}
+.foot a:hover { color: var(--acid); }
+
+@media (max-width: 560px) {
+    .step { flex-direction: column; gap: 14px; padding: 24px 20px; }
+    .limits, .check { padding: 26px 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+}

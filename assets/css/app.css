@@ -1072,6 +1072,8 @@ svg {
     color: var(--text-faint);
 }
 
+/* Один и тот же вид у кнопок и у ссылок: «Как работает шифрование» ведёт
+   на отдельную страницу и обязана быть ссылкой, а не кнопкой */
 .drawer__item {
     display: flex;
     align-items: center;
@@ -1082,7 +1084,9 @@ svg {
     background: transparent;
     color: inherit;
     font-size: 14.5px;
+    font-family: inherit;
     text-align: left;
+    text-decoration: none;
     cursor: pointer;
 }
 .drawer__item:hover { background: var(--surface-hover); }

@@ -8,15 +8,18 @@
  * обещает не делать.
  */
 
-const VERSION = "qiwigram-v3"
+const VERSION = "qiwigram-v4"
 
 const SHELL = [
     "./",
     "index.html",
     "app.html",
+    "security.html",
     "manifest.webmanifest",
     "assets/css/landing.css",
     "assets/css/app.css",
+    "assets/css/security.css",
+    "assets/js/dither.js",
     "assets/vendor/supabase.js",
     "assets/js/glass.js",
     "assets/js/landing.js",

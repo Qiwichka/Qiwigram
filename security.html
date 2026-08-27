@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Как работает шифрование — Qiwigram</title>
+<meta name="description" content="Почему владелец Qiwigram не может прочитать вашу переписку — и чего шифрование не закрывает.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="icons/icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="assets/css/security.css">
+</head>
+<body>
+
+<canvas id="dither" class="bg"></canvas>
+
+<a class="back" href="app.html" aria-label="Назад">← Назад</a>
+
+<main class="wrap">
+
+    <header class="hero">
+        <p class="kicker">Qiwigram</p>
+        <h1>Как работает<br>шифрование</h1>
+        <p class="lede">
+            Короткий и честный разбор: почему владелец сайта не может прочитать вашу переписку —
+            и что шифрование при этом всё-таки не прячет.
+        </p>
+    </header>
+
+    <section class="step">
+        <div class="step__n">1</div>
+        <div class="step__body">
+            <h2>Два ключа вместо одного</h2>
+            <p>
+                Когда ты регистрируешься, твой браузер создаёт пару ключей. Не пароль — именно ключи,
+                и не на сервере, а прямо у тебя на устройстве.
+            </p>
+            <p>
+                <b>Открытый ключ</b> — как открытый навесной замок. Его можно раздать кому угодно,
+                им можно только <i>запереть</i>. <b>Закрытый ключ</b> — единственное, чем этот замок
+                отпирается. Он не уходит с твоего устройства.
+            </p>
+        </div>
+    </section>
+
+    <section class="step">
+        <div class="step__n">2</div>
+        <div class="step__body">
+            <h2>Куда они деваются</h2>
+            <p>
+                Открытый кладётся в профиль, его видят все — так и задумано, иначе тебе никто
+                не сможет написать.
+            </p>
+            <p>
+                Закрытый шифруется <b>твоим паролем</b> и тоже кладётся в базу, но в виде
+                нечитаемого куска. А сам пароль на сервер не попадает <b>никогда</b>: от него
+                хранится только хеш, а ключ шифрования вычисляется у тебя в браузере.
+            </p>
+        </div>
+    </section>
+
+    <section class="step step--key">
+        <div class="step__n">3</div>
+        <div class="step__body">
+            <h2>Главный фокус</h2>
+            <p>
+                У этих ключей есть математическое свойство, на котором всё держится:
+            </p>
+            <div class="formula">
+                <div class="formula__row"><span>твой закрытый</span> + <span>мой открытый</span></div>
+                <div class="formula__eq">=</div>
+                <div class="formula__row"><span>мой закрытый</span> + <span>твой открытый</span></div>
+            </div>
+            <p>
+                Из обеих пар получается <b>одно и то же число</b>. Одинаковое у двоих — при том что
+                оно нигде не передавалось и в сети не появлялось.
+            </p>
+            <p>
+                Вот им и шифруется переписка. Серверу его не вычислить: для этого нужен хотя бы
+                один закрытый ключ, а у него их нет ни одного — только зашифрованные паролями огрызки.
+            </p>
+        </div>
+    </section>
+
+    <section class="step">
+        <div class="step__n">4</div>
+        <div class="step__body">
+            <h2>Что реально лежит в базе</h2>
+            <p>Не текст. Вот так выглядит сообщение с той стороны:</p>
+            <pre class="code">body: <span class="null">null</span>
+enc:  {
+  "iv": "kR8xQ2vN0pLm4sT1",
+  "ct": "9dHc3ZfW1qYs6BvE0nKjA7uPrX2LtMoI..."
+}</pre>
+            <p>
+                Это можно проверить, а не принимать на веру: у владельца проекта максимальный
+                доступ к базе, и он видит ровно это.
+            </p>
+        </div>
+    </section>
+
+    <section class="step">
+        <div class="step__n">5</div>
+        <div class="step__body">
+            <h2>Группы и файлы</h2>
+            <p>
+                В группе двоих нет, и фокус из третьего шага не работает. Поэтому у группы свой
+                случайный ключ, и он заворачивается отдельно под каждого участника — тем же парным
+                секретом. Раздают его друг другу сами участники: сервер не может, у него ключа нет.
+            </p>
+            <p>
+                Фотографии и видео шифруются целиком <b>до</b> загрузки. В хранилище лежит файл
+                с мусором, а картинкой он снова становится уже в браузере получателя.
+            </p>
+        </div>
+    </section>
+
+    <section class="limits">
+        <h2>Чего шифрование не закрывает</h2>
+        <p class="limits__lede">
+            Это важнее всего остального на этой странице. Обещать больше, чем есть, — худшее,
+            что может сделать мессенджер.
+        </p>
+
+        <div class="limit">
+            <h3>Видно, кто с кем и когда</h3>
+            <p>Закрыто содержание разговора, но не сам факт, что он был.</p>
+        </div>
+
+        <div class="limit">
+            <h3>Простой пароль подбирается</h3>
+            <p>
+                Закрытый ключ защищён твоим паролем. «12345» переберут. Ставь нормальный —
+                это единственное, что здесь зависит лично от тебя.
+            </p>
+        </div>
+
+        <div class="limit">
+            <h3>IP-адрес виден</h3>
+            <p>
+                Анонимно — значит, что другие пользователи не узнают, кто ты. Это не значит,
+                что тебя невозможно вычислить в принципе.
+            </p>
+        </div>
+
+        <div class="limit">
+            <h3>Сайт можно подменить</h3>
+            <p>
+                Сегодня код такой, завтра владелец выложит другой. Против этого помогает
+                установленное приложение, которое само не меняется, и открытые исходники,
+                которые можно сверить.
+            </p>
+        </div>
+    </section>
+
+    <section class="check">
+        <h2>Проверь сам</h2>
+        <p>
+            Не верь ничему из написанного выше. Код открыт целиком — читай
+            <code>assets/js/crypto.js</code>, там всё шифрование и те же оговорки в комментариях.
+        </p>
+        <a class="check__link" href="https://github.com/Qiwichka/Qiwigram" target="_blank" rel="noopener">
+            github.com/Qiwichka/Qiwigram
+        </a>
+    </section>
+
+    <footer class="foot">
+        <a href="app.html">← Вернуться в Qiwigram</a>
+    </footer>
+</main>
+
+<script src="assets/js/dither.js"></script>
+<script>
+(function () {
+    var canvas = document.getElementById("dither")
+    var ok = window.initDither && window.initDither(canvas, {
+        background: "#000000",
+        color: "#00FFC0",
+        size: 34,
+        speed: 56,
+        scale: 32
+    })
+    // WebGL2 может не подняться на старом телефоне — тогда просто чёрный фон,
+    // текст важнее фона и должен читаться в любом случае
+    if (!ok) canvas.remove()
+})()
+</script>
+</body>
+</html>
