@@ -2,7 +2,7 @@
 
 import * as db from "./db.js"
 import {
-    $, $$, el, linkify, escapeHtml, avatarNode, avatarColor, initials,
+    $, $$, el, linkify, escapeHtml, avatarNode, avatarColor, initials, isOnline,
     fmtTime, fmtListTime, fmtDay, fmtLastSeen, plural,
     toast, modal, confirmBox, openViewer
 } from "./ui.js"
@@ -29,7 +29,11 @@ const S = {
     viewOnce: false,
     loadingTop: false,
     reachedTop: false,
-    editing: null
+    editing: null,
+    filter: "all",       // вкладка списка чатов
+    unreadFrom: null,    // отметка о прочтении на момент открытия чата
+    fresh: new Set(),    // id сообщений, которые надо показать с анимацией
+    newWhileAway: 0      // пришло, пока человек читал старое
 }
 
 /* ============================================================================
@@ -273,11 +277,25 @@ function wireApp() {
         location.reload()
     }
     $("#btn-chat-info").onclick = () => S.chat && chatInfoDialog()
+    $("#btn-to-bottom").onclick = () => {
+        S.newWhileAway = 0
+        scrollToBottom(true)
+        // прокрутка плавная, а кнопка должна погаснуть сразу
+        setTimeout(updateToBottom, 350)
+    }
 
     $$("[data-theme-set]").forEach((chip) => {
         chip.onclick = () => setTheme(chip.dataset.themeSet)
     })
 
+    $("#btn-copy-me").onclick = async () => {
+        try {
+            await navigator.clipboard.writeText("@" + S.me.username)
+            toast("Ник скопирован")
+        } catch { toast("Не вышло скопировать", true) }
+    }
+
+    wireFilters()
     wireSearch()
     wireComposer()
 
@@ -366,19 +384,51 @@ async function refreshChats() {
     }
 }
 
+/** Какие чаты показывать. Фильтр живёт только в интерфейсе. */
+function passesFilter(c) {
+    switch (S.filter) {
+        case "unread": return c.unread > 0
+        case "dm": return c.type === "dm"
+        case "groups": return c.type === "group" || c.type === "channel"
+        default: return true
+    }
+}
+
+function emptyState(title, text, action) {
+    return el("div", { class: "empty" },
+        el("div", { class: "empty__art" },
+            el("span", { html: '<svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-3.9-.9L3 20.5l1.5-4.6A8.4 8.4 0 1121 11.5z"/></svg>' })),
+        el("div", { class: "empty__title", text: title }),
+        el("div", { class: "empty__text", text }),
+        action || null
+    )
+}
+
 function renderChatList() {
     const list = $("#chat-list")
     list.innerHTML = ""
 
     if (!S.chats.length) {
-        list.append(el("div", {
-            class: "chat__empty-badge",
-            style: "margin:26px auto;display:table"
-        }, "Пока пусто. Жми + и найди кого-нибудь"))
+        list.append(emptyState(
+            "Здесь пока пусто",
+            "Найди кого-нибудь по нику или собери свою группу.",
+            el("button", { class: "btn btn--primary", onclick: openNewChatMenu }, "Начать переписку")
+        ))
         return
     }
 
-    for (const c of S.chats) {
+    const shown = S.chats.filter(passesFilter)
+    if (!shown.length) {
+        list.append(emptyState(
+            "Ничего не подходит",
+            S.filter === "unread"
+                ? "Непрочитанных нет — всё разобрано."
+                : "В этой вкладке пока пусто."
+        ))
+        return
+    }
+
+    for (const c of shown) {
         list.append(chatRow(c))
     }
 }
@@ -406,7 +456,7 @@ function chatRow(c) {
     }
 
     const row = el("button", { class: "row" + (active ? " is-active" : "") },
-        avatarNode(title, c.avatar_url),
+        avatarNode(title, c.avatar_url, "", c.type === "dm" && isOnline(c.peer_last_seen)),
         el("div", { class: "row__body" },
             el("div", { class: "row__top" },
                 el("div", { class: "row__name" },
@@ -416,24 +466,103 @@ function chatRow(c) {
             el("div", { class: "row__bottom" },
                 el("div", { class: "row__preview", text: preview }),
                 c.ttl_seconds ? el("span", { class: "row__time", title: "Таймер включён" }, "⏱") : null,
-                c.unread > 0 ? el("span", { class: "row__badge", text: c.unread > 99 ? "99+" : String(c.unread) }) : null
+                c.muted ? el("span", {
+                    class: "row__mute", title: "Без звука",
+                    html: '<svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 4V6l-5 4H3z"/><path d="M16 9l5 6M21 9l-5 6"/></svg>'
+                }) : null,
+                c.unread > 0 ? el("span", {
+                    class: "row__badge" + (c.muted ? " row__badge--muted" : ""),
+                    text: c.unread > 99 ? "99+" : String(c.unread)
+                }) : null
             )
         )
     )
     row.onclick = () => openChat(c.chat_id)
+
+    // меню чата: правой кнопкой на компьютере, удержанием на телефоне
+    if (isTouch) {
+        attachLongPress(row, () => chatRowMenu(c))
+        row.oncontextmenu = (e) => e.preventDefault()
+    } else {
+        row.oncontextmenu = (e) => { e.preventDefault(); chatRowMenu(c) }
+    }
+
     return row
+}
+
+async function chatRowMenu(c) {
+    const title = chatTitle(c)
+    const choice = await modal((box, close) => {
+        box.append(
+            el("h2", { text: title }),
+            el("div", { class: "opt-list" },
+                el("button", { class: "opt", onclick: () => close("open") }, "💬  Открыть"),
+                el("button", { class: "opt", onclick: () => close("mute") },
+                    c.muted ? "🔔  Включить звук" : "🔕  Без звука"),
+                c.unread > 0
+                    ? el("button", { class: "opt", onclick: () => close("read") }, "✓  Отметить прочитанным")
+                    : null,
+                c.type !== "dm"
+                    ? el("button", { class: "opt", style: "color:var(--danger)", onclick: () => close("leave") }, "🚪  Выйти из чата")
+                    : null
+            )
+        )
+    })
+
+    try {
+        if (choice === "open") openChat(c.chat_id)
+        else if (choice === "mute") {
+            await db.setMuted(c.chat_id, !c.muted)
+            await refreshChats()
+        } else if (choice === "read") {
+            await db.markRead(c.chat_id)
+            await refreshChats()
+        } else if (choice === "leave") {
+            if (!(await confirmBox({ title: "Выйти из чата?", ok: "Выйти", danger: true }))) return
+            await db.leaveChat(c.chat_id)
+            if (S.chat && S.chat.chat_id === c.chat_id) closeChat()
+            await refreshChats()
+        }
+    } catch (e) { toast(e.message, true) }
 }
 
 /* ============================================================================
    ПОИСК
    ============================================================================ */
 
+function wireFilters() {
+    $$("#filters .chip").forEach((chip) => {
+        chip.onclick = () => {
+            S.filter = chip.dataset.filter
+            $$("#filters .chip").forEach((c) => c.classList.toggle("is-active", c === chip))
+            renderChatList()
+        }
+    })
+}
+
 function wireSearch() {
     const input = $("#search")
     const box = $("#search-results")
+    const bar = $("#search-bar")
     let timer = 0
 
     const hide = () => { box.hidden = true; box.innerHTML = "" }
+
+    const openSearch = () => {
+        bar.hidden = false
+        $("#filters").hidden = true
+        input.focus()
+    }
+    const closeSearch = () => {
+        input.value = ""
+        bar.hidden = true
+        $("#filters").hidden = false
+        hide()
+    }
+
+    $("#btn-search").onclick = () => (bar.hidden ? openSearch() : closeSearch())
+    $("#btn-search-close").onclick = closeSearch
+    input.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSearch() })
 
     input.addEventListener("input", () => {
         const q = input.value.trim().replace(/^@/, "")
@@ -499,7 +628,9 @@ function wireSearch() {
         }, 300)
     })
 
-    input.addEventListener("blur", () => setTimeout(hide, 180))
+    // Скрытия по потере фокуса больше нет: оно срабатывало раньше, чем
+    // нажатие по найденной строке, и результаты исчезали из-под пальца.
+    // Закрывает поиск теперь только крестик или Escape.
 }
 
 /* ============================================================================
@@ -523,6 +654,12 @@ async function openChat(chatId) {
     S.reachedTop = false
     S.attach = []
     S.editing = null
+    S.fresh.clear()
+    S.newWhileAway = 0
+    // запоминаем ДО отметки о прочтении: сейчас она обнулится,
+    // а черта «непрочитанные» должна встать там, где человек остановился
+    S.unreadFrom = row.unread > 0 ? row.last_read_at : null
+    closeEmoji()
     renderAttach()
     renderReplyBar()
 
@@ -592,7 +729,10 @@ function renderChatHeader() {
     const title = chatTitle(c)
 
     $("#chat-avatar").replaceWith(
-        Object.assign(avatarNode(title, c.avatar_url), { id: "chat-avatar" })
+        Object.assign(
+            avatarNode(title, c.avatar_url, "", c.type === "dm" && isOnline(c.peer_last_seen)),
+            { id: "chat-avatar" }
+        )
     )
     $("#chat-name").textContent = title
 
@@ -610,9 +750,33 @@ function renderChatHeader() {
    ЛЕНТА СООБЩЕНИЙ
    ============================================================================ */
 
+/* Кнопка «вниз» появляется, когда лента ушла заметно выше конца, и несёт
+   число сообщений, пришедших за это время. */
+function updateToBottom() {
+    const box = $("#messages")
+    const btn = $("#btn-to-bottom")
+    if (!box || !btn) return
+
+    const away = box.scrollHeight - box.scrollTop - box.clientHeight
+    const show = away > 300
+
+    btn.classList.toggle("is-on", show)
+    if (!show) S.newWhileAway = 0
+
+    const old = btn.querySelector(".to-bottom__badge")
+    if (old) old.remove()
+    if (show && S.newWhileAway > 0) {
+        btn.append(el("span", {
+            class: "to-bottom__badge",
+            text: S.newWhileAway > 99 ? "99+" : String(S.newWhileAway)
+        }))
+    }
+}
+
 function wireMessagesScroll() {
     const box = $("#messages")
     box.onscroll = async () => {
+        updateToBottom()
         if (box.scrollTop > 120 || S.loadingTop || S.reachedTop || !S.messages.length) return
         S.loadingTop = true
         $("#messages-top").innerHTML = '<div class="spinner"></div>'
@@ -651,12 +815,23 @@ function renderMessages() {
 
     let lastDay = ""
     let prev = null
+    let dividerDone = false
 
     S.messages.forEach((m, i) => {
         const day = new Date(m.created_at).toDateString()
         if (day !== lastDay) {
             list.append(el("div", { class: "day", text: fmtDay(m.created_at) }))
             lastDay = day
+            prev = null
+        }
+
+        /* Черта «непрочитанные» — ровно там, где человек остановился в
+           прошлый раз. Ставится один раз и только перед чужим сообщением:
+           своё собственное непрочитанным быть не может. */
+        if (!dividerDone && S.unreadFrom && m.sender_id !== S.me.id &&
+            new Date(m.created_at) > new Date(S.unreadFrom)) {
+            list.append(el("div", { class: "unread-line" }, el("span", { text: "Непрочитанные" })))
+            dividerDone = true
             prev = null
         }
 
@@ -669,9 +844,15 @@ function renderMessages() {
             new Date(next.created_at) - new Date(m.created_at) > 300_000 ||
             new Date(next.created_at).toDateString() !== day
 
-        list.append(messageNode(m, { isFirst, isLast }))
+        const node = messageNode(m, { isFirst, isLast })
+        if (S.fresh.has(m.id)) node.classList.add("msg--fresh")
+        list.append(node)
         prev = m
     })
+
+    // анимация одноразовая: при следующей перерисовке лента не должна
+    // заново подпрыгивать целиком
+    S.fresh.clear()
 }
 
 function messageNode(m, { isFirst, isLast }) {
@@ -697,7 +878,10 @@ function messageNode(m, { isFirst, isLast }) {
     if (m.media && m.media.length) bubble.append(mediaNode(m))
 
     if (m.body) {
-        bubble.append(el("div", { class: "msg__text", html: linkify(m.body) }))
+        bubble.append(el("div", {
+            class: "msg__text" + (isJumbo(m.body) ? " msg__text--jumbo" : ""),
+            html: linkify(m.body)
+        }))
     }
 
     const meta = el("div", { class: "msg__meta" })
@@ -708,6 +892,25 @@ function messageNode(m, { isFirst, isLast }) {
     bubble.append(meta)
 
     node.append(bubble)
+
+    // Кнопка ответа при наведении — на компьютере правая кнопка мыши
+    // не всем очевидна, а тянуть пузырь мышью неудобно
+    node.append(el("button", {
+        class: "msg__reply-btn",
+        title: "Ответить",
+        html: '<svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h9a7 7 0 017 7v1"/></svg>',
+        onclick: (e) => {
+            e.stopPropagation()
+            startReply(m)
+        }
+    }))
+
+    bubble.append(el("span", {
+        class: "msg__swipe",
+        html: '<svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h9a7 7 0 017 7v1"/></svg>'
+    }))
+
+    if (isTouch) attachSwipeReply(node, bubble, m)
 
     /* Меню сообщения: правая кнопка на компьютере, долгое нажатие на телефоне.
        Ровно одно из двух — Android на удержании присылает и своё
@@ -857,6 +1060,91 @@ function showFullMedia(item, url) {
     openViewer(node)
 }
 
+/** Сообщение из одних эмодзи рисуем крупно — как в телеге. */
+const EMOJI_ONLY = /^[\p{Extended_Pictographic}\p{Emoji_Component}️‍\s]+$/u
+
+function isJumbo(text) {
+    const t = text.trim()
+    if (!t || t.length > 40) return false
+    let ok
+    try { ok = EMOJI_ONLY.test(t) } catch { return false }
+    if (!ok) return false
+    const n = segments(t).filter((s) => s.trim()).length
+    return n > 0 && n <= 3
+}
+
+function startReply(m) {
+    S.editing = null
+    S.replyTo = m
+    renderReplyBar()
+    $("#input").focus()
+}
+
+/*
+ * Свайп для ответа. Тянем пузырь влево (у своих — вправо), после порога
+ * отпускаем — и сообщение уходит в цитату.
+ *
+ * Главная тонкость: жест обязан уступать вертикальной прокрутке. Пока не
+ * ясно, куда ведут палец, ничего не двигаем; как только движение оказалось
+ * заметно горизонтальным — перехватываем, иначе навсегда отдаём прокрутке.
+ */
+function attachSwipeReply(node, bubble, m) {
+    const MAX = 64
+    const TRIGGER = 48
+
+    let x0 = 0, y0 = 0
+    let axis = null     // null — ещё не решили, "x" — наш, "y" — прокрутка
+    let dx = 0
+
+    const icon = bubble.querySelector(".msg__swipe")
+    const out = node.classList.contains("msg--out")
+    const dir = out ? 1 : -1
+
+    node.addEventListener("touchstart", (e) => {
+        if (e.touches.length !== 1) return
+        x0 = e.touches[0].clientX
+        y0 = e.touches[0].clientY
+        axis = null
+        dx = 0
+    }, { passive: true })
+
+    node.addEventListener("touchmove", (e) => {
+        if (e.touches.length !== 1) return
+        const mx = e.touches[0].clientX - x0
+        const my = e.touches[0].clientY - y0
+
+        if (axis === null) {
+            if (Math.abs(mx) < 8 && Math.abs(my) < 8) return
+            axis = Math.abs(mx) > Math.abs(my) * 1.4 ? "x" : "y"
+            if (axis === "x") node.classList.add("is-dragging")
+        }
+        if (axis !== "x") return
+
+        // тянуть можно только в свою сторону, и не дальше упора
+        dx = Math.min(Math.max(0, mx * dir), MAX)
+        const shift = dx * dir
+        bubble.style.transform = `translateX(${shift}px)`
+        if (icon) icon.style.opacity = String(Math.min(1, dx / TRIGGER))
+    }, { passive: true })
+
+    const release = () => {
+        if (axis === "x") {
+            node.classList.remove("is-dragging")
+            bubble.style.transform = ""
+            if (icon) icon.style.opacity = "0"
+            if (dx >= TRIGGER) {
+                if (navigator.vibrate) navigator.vibrate(10)
+                startReply(m)
+            }
+        }
+        axis = null
+        dx = 0
+    }
+
+    node.addEventListener("touchend", release)
+    node.addEventListener("touchcancel", release)
+}
+
 /* ------------------------- нажатие с удержанием ------------------------- */
 
 function attachLongPress(node, run) {
@@ -906,9 +1194,7 @@ async function messageMenu(m) {
     })
 
     if (choice === "reply") {
-        S.replyTo = m
-        renderReplyBar()
-        $("#input").focus()
+        startReply(m)
     } else if (choice === "copy") {
         try {
             await navigator.clipboard.writeText(m.body)
@@ -949,8 +1235,17 @@ async function onIncoming(raw) {
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 140
 
     S.messages.push(row)
+    S.fresh.add(row.id)
     renderMessages()
-    if (atBottom) scrollToBottom(true)
+
+    if (atBottom) {
+        scrollToBottom(true)
+    } else if (row.sender_id !== S.me.id) {
+        // человек внизу ленты не был — сообщение он не увидел,
+        // и об этом должна сказать кнопка «вниз»
+        S.newWhileAway++
+        updateToBottom()
+    }
 
     db.markRead(S.chat.chat_id)
     if (row.sender_id !== S.me.id) S.typingWho.delete(row.sender_id)
@@ -1011,9 +1306,119 @@ function renderTyping() {
    ОТПРАВКА
    ============================================================================ */
 
+/* ============================================================================
+   ЭМОДЗИ
+
+   Список свой, а не системная клавиатура: на компьютере её просто нет, а на
+   телефоне она закрывает пол-экрана и теряет переписку из виду.
+   ============================================================================ */
+
+const EMOJI = [
+    ["😀", "😀😃😄😁😆😅🤣😂🙂🙃😉😊😇🥰😍🤩😘😗😚😙🥲😋😛😜🤪😝🤑🤗🤭🤫🤔🤐🤨😐😑😶😏😒🙄😬😮‍💨🤥😌😔😪🤤😴😷🤒🤕🤢🤮🤧🥵🥶🥴😵😵‍💫🤯🤠🥳🥸😎🤓🧐😕😟🙁😮😯😲😳🥺😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠️💩🤡"],
+    ["👍", "👍👎👌🤌🤏✌️🤞🤟🤘🤙👈👉👆👇☝️✋🤚🖐️🖖👋🤝🙏✍️💅🤳💪🦾🦵🦶👂👃🧠🫀👀👁️👅👄💋🫶🤲👐🙌👏🫰"],
+    ["❤️", "❤️🧡💛💚💙💜🖤🤍🤎💔❣️💕💞💓💗💖💘💝💟♥️💯💢💥💫💦💨🕳️💬💭🗯️♨️"],
+    ["🔥", "🔥⭐️🌟✨⚡️☄️💥🌈☀️🌤️⛅️🌥️☁️🌦️🌧️⛈️🌩️🌨️❄️☃️⛄️🌬️💨🌪️🌫️🌊💧🫧🌙⭐️🌕🌖🌗🌘🌑🌒🌓🌔"],
+    ["🐱", "🐶🐱🐭🐹🐰🦊🐻🐼🐻‍❄️🐨🐯🦁🐮🐷🐸🐵🙈🙉🙊🐒🦆🦅🦉🦇🐺🐗🐴🦄🐝🪱🐛🦋🐌🐞🐜🪰🕷️🦂🐢🐍🦎🐙🦑🦐🦞🦀🐡🐠🐟🐬🐳🐋🦈🐊🐅🐆🦓🦍🦧🐘🦛🦏🐪🐫🦒🦘🦬🐃🐂🐄🐎🐖🐏🐑🦙🐐🦌🐕🐩🦮🐈🐓🦃🦚🦜🦢🕊️🐇🦝🦨🦡🦫🦦🦥🐁🐀🐿️🦔"],
+    ["🍕", "🍏🍎🍐🍊🍋🍌🍉🍇🍓🫐🍈🍒🍑🥭🍍🥥🥝🍅🍆🥑🥦🥬🥒🌶️🫑🌽🥕🫒🧄🧅🥔🍠🥐🥯🍞🥖🥨🧀🥚🍳🧈🥞🧇🥓🥩🍗🍖🌭🍔🍟🍕🫓🥪🌮🌯🫔🥙🧆🥘🍝🍜🍲🍛🍣🍱🥟🍤🍙🍚🍘🍥🥠🥮🍢🍡🍧🍨🍦🥧🧁🍰🎂🍮🍭🍬🍫🍿🍩🍪☕️🍵🧃🥤🧋🍺🍻🥂🍷🥃🍸🍹🧉"],
+    ["⚽️", "⚽️🏀🏈⚾️🥎🎾🏐🏉🥏🎱🪀🏓🏸🏒🏑🥍🏏🪃🥅⛳️🪁🏹🎣🤿🥊🥋🎽🛹🛼🛷⛸️🥌🎿⛷️🏂🏋️🤼🤸⛹️🤺🤾🏌️🏇🧘🏄🏊🤽🚣🧗🚴🚵🏆🥇🥈🥉🏅🎖️🎗️🎫🎪🤹🎭🎨🎬🎤🎧🎼🎹🥁🎷🎺🎸🪕🎻🎲♟️🎯🎳🎮🎰🧩"],
+    ["✅", "✅❌❎➕➖➗✖️❓❔❕❗️‼️⁉️〰️💱💲⚕️♻️⚜️🔱📛🔰⭕️✔️☑️🔘🔴🟠🟡🟢🔵🟣⚫️⚪️🟤🔺🔻🔸🔹🔶🔷🔳🔲▪️▫️◾️◽️◼️◻️⬛️⬜️🟥🟧🟨🟩🟦🟪⬆️↗️➡️↘️⬇️↙️⬅️↖️↕️↔️↩️↪️🔄🔃🔙🔚🔛🔜🔝🔒🔓🔏🔐🔑🗝️"]
+]
+
+/* Разбор строки на «то, что человек считает одним символом». Делить по
+   кодовым точкам нельзя: флаг, эмодзи с цветом кожи или семья из четырёх
+   человечков — это несколько кодовых точек, и такое деление рвёт их в клочья. */
+const segmenter = typeof Intl !== "undefined" && Intl.Segmenter ? new Intl.Segmenter() : null
+
+function segments(str) {
+    if (segmenter) return Array.from(segmenter.segment(str), (s) => s.segment)
+    return Array.from(str)
+}
+
+const RECENT_KEY = "qiwi.emoji.recent"
+
+function readRecent() {
+    try {
+        const raw = localStorage.getItem(RECENT_KEY)
+        return raw ? JSON.parse(raw) : []
+    } catch { return [] }
+}
+
+function pushRecent(e) {
+    // недавние впереди, без повторов, не больше строки
+    const list = [e, ...readRecent().filter((x) => x !== e)].slice(0, 24)
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)) } catch { /* пусто */ }
+}
+
+function closeEmoji() {
+    const panel = $("#emoji-panel")
+    if (panel) panel.remove()
+    $("#btn-emoji").classList.remove("is-on")
+}
+
+function toggleEmoji() {
+    if ($("#emoji-panel")) return closeEmoji()
+
+    const btn = $("#btn-emoji")
+    btn.classList.add("is-on")
+
+    const grid = el("div", { class: "emoji-panel__grid" })
+    const tabs = el("div", { class: "emoji-panel__tabs" })
+
+    const recent = readRecent()
+    const groups = recent.length ? [["🕘", recent.join("")], ...EMOJI] : EMOJI
+
+    const fill = (chars) => {
+        grid.innerHTML = ""
+        // по кодовым точкам разбивать нельзя: флаги и эмодзи с модификаторами
+        // состоят из нескольких, и их бы порвало на куски
+        for (const e of segments(chars)) {
+            if (!e.trim()) continue
+            grid.append(el("button", {
+                class: "emoji-panel__btn",
+                onclick: () => insertEmoji(e)
+            }, e))
+        }
+        grid.scrollTop = 0
+    }
+
+    groups.forEach(([icon, chars], i) => {
+        const tab = el("button", {
+            class: "emoji-panel__tab" + (i === 0 ? " is-active" : ""),
+            onclick: () => {
+                $$(".emoji-panel__tab").forEach((t) => t.classList.toggle("is-active", t === tab))
+                fill(chars)
+            }
+        }, icon)
+        tabs.append(tab)
+    })
+
+    fill(groups[0][1])
+
+    const panel = el("div", { class: "emoji-panel", id: "emoji-panel" }, tabs, grid)
+    $("#composer").append(panel)
+}
+
+function insertEmoji(e) {
+    pushRecent(e)
+    const input = $("#input")
+    input.focus()
+    // execCommand устарел, но это единственный способ вставить текст в
+    // contenteditable так, чтобы отмена по Ctrl+Z продолжала работать
+    document.execCommand("insertText", false, e)
+    input.dispatchEvent(new Event("input"))
+}
+
 function wireComposer() {
     const input = $("#input")
     const send = $("#btn-send")
+
+    $("#btn-emoji").onclick = toggleEmoji
+    // клик мимо панели закрывает её; на самой панели и на кнопке — нет
+    document.addEventListener("pointerdown", (e) => {
+        if (!$("#emoji-panel")) return
+        if (e.target.closest("#emoji-panel") || e.target.closest("#btn-emoji")) return
+        closeEmoji()
+    })
 
     $("#btn-attach").onclick = () => $("#file-input").click()
     $("#file-input").onchange = (e) => {

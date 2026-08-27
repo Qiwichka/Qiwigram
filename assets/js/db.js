@@ -459,6 +459,13 @@ export async function setChatTtl(chatId, seconds) {
     return unwrap(await sb.rpc("set_chat_ttl", { _chat: chatId, _seconds: seconds || 0 }))
 }
 
+export async function setMuted(chatId, muted) {
+    const session = await currentSession()
+    return unwrap(await sb.from("chat_members")
+        .update({ muted })
+        .eq("chat_id", chatId).eq("user_id", session.user.id))
+}
+
 export async function markRead(chatId) {
     // Отметка о прочтении — не то, ради чего стоит показывать ошибку:
     // не дошла, значит счётчик обновится в следующий раз.

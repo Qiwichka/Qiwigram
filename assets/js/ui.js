@@ -72,7 +72,7 @@ export function initials(name) {
     return parts.map((p) => p[0] || "").join("").toUpperCase() || "?"
 }
 
-export function avatarNode(name, url, extraClass = "") {
+export function avatarNode(name, url, extraClass = "", online = false) {
     const node = el("div", { class: "avatar " + extraClass })
     if (url) {
         node.append(el("img", { src: url, alt: "", loading: "lazy" }))
@@ -80,7 +80,15 @@ export function avatarNode(name, url, extraClass = "") {
         node.style.background = avatarColor(name)
         node.textContent = initials(name)
     }
+    if (online) node.append(el("i", { class: "avatar__dot", title: "в сети" }))
     return node
+}
+
+/* «В сети» — то же пороговое значение, что и у надписи в шапке чата:
+   присутствие отмечается раз в минуту, так что полторы минуты запаса
+   не дают точке мигать у того, кто просто сидит и читает. */
+export function isOnline(lastSeen) {
+    return !!lastSeen && (Date.now() - new Date(lastSeen)) < 90_000
 }
 
 /* --------------------------------- время --------------------------------- */

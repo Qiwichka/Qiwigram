@@ -199,15 +199,33 @@
             <button class="icon-btn" id="btn-menu" aria-label="Меню">
                 <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
             </button>
-            <div class="search">
-                <svg class="search__icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-                <input id="search" type="search" placeholder="Поиск" autocomplete="off" spellcheck="false">
-            </div>
+            <div class="sidebar__title">Qiwigram</div>
+            <button class="icon-btn" id="btn-search" aria-label="Поиск">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            </button>
         </header>
 
-        <div class="chat-list" id="chat-list"></div>
+        <!-- Строка поиска разворачивается по кнопке: в свёрнутом виде
+             её место занимает название, а не пустая рамка -->
+        <div class="search" id="search-bar" hidden>
+            <svg class="search__icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input id="search" type="search" placeholder="Ник, группа или канал" autocomplete="off" spellcheck="false">
+            <button class="icon-btn search__close" id="btn-search-close" aria-label="Закрыть поиск">
+                <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+        </div>
 
-        <div class="search-results" id="search-results" hidden></div>
+        <div class="filters" id="filters">
+            <button class="chip is-active" data-filter="all">Все</button>
+            <button class="chip" data-filter="unread">Непрочитанные</button>
+            <button class="chip" data-filter="dm">Личка</button>
+            <button class="chip" data-filter="groups">Группы</button>
+        </div>
+
+        <div class="sidebar__body">
+            <div class="chat-list" id="chat-list"></div>
+            <div class="search-results" id="search-results" hidden></div>
+        </div>
 
         <button class="fab" id="btn-new" aria-label="Новый чат">
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
@@ -240,6 +258,10 @@
                 <div class="messages__list" id="messages-list"></div>
             </div>
 
+            <button class="to-bottom" id="btn-to-bottom" aria-label="Вниз">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+            </button>
+
             <div class="reply-bar" id="reply-bar" hidden>
                 <div class="reply-bar__line"></div>
                 <div class="reply-bar__body">
@@ -258,6 +280,10 @@
                     <svg viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5 5 0 01-7-7l8.5-8.6a3.3 3.3 0 114.7 4.7l-8.5 8.5a1.7 1.7 0 11-2.3-2.3l7.9-7.9"/></svg>
                 </button>
                 <input type="file" id="file-input" accept="image/*,video/*" multiple hidden>
+
+                <button class="icon-btn composer__toggle" id="btn-emoji" aria-label="Эмодзи">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 007 0"/><circle cx="9" cy="9.5" r=".9" fill="currentColor"/><circle cx="15" cy="9.5" r=".9" fill="currentColor"/></svg>
+                </button>
 
                 <div class="composer__input" id="input" contenteditable="true"
                      role="textbox" aria-multiline="true" data-placeholder="Сообщение"></div>
@@ -305,6 +331,7 @@
     </div>
 
     <div class="drawer__section">
+        <div class="drawer__label">Создать</div>
         <button class="drawer__item" id="btn-new-group">
             <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 19a6.5 6.5 0 0113 0"/><path d="M17 11h5M19.5 8.5v5"/></svg>
             Создать группу
@@ -313,13 +340,33 @@
             <svg viewBox="0 0 24 24"><path d="M3 10v4h4l6 4V6L7 10H3z"/><path d="M17 9a4 4 0 010 6"/></svg>
             Создать канал
         </button>
+    </div>
+
+    <div class="drawer__section">
+        <div class="drawer__label">Аккаунт</div>
         <button class="drawer__item" id="btn-edit-profile">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0115 0"/></svg>
             Профиль
         </button>
+        <button class="drawer__item" id="btn-copy-me">
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/></svg>
+            Скопировать свой ник
+        </button>
+    </div>
+
+    <div class="drawer__section">
+        <div class="drawer__label">О Qiwigram</div>
         <a class="drawer__item" href="security.html">
             <svg viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7a4 4 0 018 0v3.5"/></svg>
             Как работает шифрование
+        </a>
+        <a class="drawer__item" href="https://github.com/Qiwichka/Qiwigram" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24"><path d="M9 19c-4 1.4-4-2.1-6-2.6m12 4.6v-3.6a3.2 3.2 0 00-.9-2.4c3-.3 6-1.5 6-6.6a5.1 5.1 0 00-1.4-3.5 4.8 4.8 0 00-.1-3.5s-1.1-.3-3.6 1.4a12.3 12.3 0 00-6.4 0C6.1 1.1 5 1.4 5 1.4a4.8 4.8 0 00-.1 3.5A5.1 5.1 0 003.5 8.4c0 5.1 3 6.3 6 6.6a3.2 3.2 0 00-.9 2.4V21"/></svg>
+            Исходный код
+        </a>
+        <a class="drawer__item" href="index.html">
+            <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 9.5V20h14V9.5"/></svg>
+            Главная страница
         </a>
     </div>
 
@@ -328,6 +375,7 @@
             <svg viewBox="0 0 24 24"><path d="M10 5H5v14h5"/><path d="M15 8l4 4-4 4M19 12H9"/></svg>
             Выйти
         </button>
+        <div class="drawer__version">Qiwigram · свобода слова</div>
     </div>
 </nav>
 
