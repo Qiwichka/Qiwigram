@@ -1099,10 +1099,14 @@ svg {
    ОКНА
    ============================================================================ */
 
+/* Окна, просмотрщик и уведомления лежат ВЫШЕ заставки (z-index: 100).
+   Иначе вопрос, заданный до её исчезновения, оказывается под ней: человек
+   видит вечную полоску, а под ней невидимое окно ждёт ответа. Один раз
+   на этом уже обожглись. */
 .modal-scrim {
     position: fixed;
     inset: 0;
-    z-index: 50;
+    z-index: 150;
     display: grid;
     place-items: center;
     padding: 18px;
@@ -1242,7 +1246,7 @@ svg {
 .viewer {
     position: fixed;
     inset: 0;
-    z-index: 60;
+    z-index: 160;
     display: grid;
     place-items: center;
     background: rgba(0, 0, 0, 0.94);
@@ -1283,7 +1287,7 @@ svg {
     position: fixed;
     left: 50%;
     bottom: max(24px, env(safe-area-inset-bottom));
-    z-index: 70;
+    z-index: 170;
     transform: translateX(-50%);
     display: grid;
     gap: 8px;

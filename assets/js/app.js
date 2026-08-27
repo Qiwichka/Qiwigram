@@ -65,17 +65,26 @@ async function boot() {
 
     step("читаю профиль")
     S.me = await db.myProfile()
-    if (S.me) {
-        step("открываю ключи")
-        await ensureKeys()
-    }
     if (!S.me) {
         // сессия жива, а профиля нет — такое бывает, если регистрацию
         // оборвало на полпути; проще выйти и начать заново
         await db.logout()
         return showAuth()
     }
+    /* Тихая попытка взять ключ с устройства — обычный случай, проходит
+       незаметно и мгновенно. */
+    step("открываю ключи")
+    await db.loadKeys().catch(() => false)
+
     await startApp()
+
+    /* А вот СПРАШИВАТЬ пароль можно только после того, как приложение уже
+       на экране. Диалог лежит ниже заставки по слоям, и заданный раньше
+       вопрос человек просто не увидит — останется висеть полоска загрузки,
+       а под ней невидимое окно, которое ждёт ответа. */
+    if (!db.keysReady()) {
+        if (await ensureKeys()) await refreshChats()
+    }
 }
 
 /*
@@ -89,6 +98,7 @@ async function boot() {
  * текста будет замок. Запирать человека наглухо из-за этого нельзя.
  */
 async function ensureKeys() {
+    if (db.keysReady()) return true
     if (await db.loadKeys().catch(() => false)) return true
 
     const password = await modal((box, close) => {
