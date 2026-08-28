@@ -272,8 +272,7 @@ function wireAuth() {
         const f = e.target
         submit(f, () => db.register({
             username: f.username.value.trim(),
-            password: f.password.value,
-            email: f.email.value.trim()
+            password: f.password.value
         }))
     }
 }

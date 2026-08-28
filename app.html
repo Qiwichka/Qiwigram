@@ -174,13 +174,7 @@
                 <span class="field__label">Пароль</span>
                 <input name="password" type="password" autocomplete="new-password"
                        placeholder="••••••••" minlength="6" required>
-                <span class="field__hint">Минимум 6 символов. Забудешь — восстановить можно будет только по почте</span>
-            </label>
-
-            <label class="field">
-                <span class="field__label">Почта</span>
-                <input name="email" type="email" autocomplete="email" placeholder="можно любую">
-                <span class="field__hint">Не проверяется и никому не видна. Нужна только чтобы вернуть аккаунт, если забудешь пароль</span>
+                <span class="field__hint field__hint--warn">Минимум 6 символов. Запиши его: восстановления пароля здесь нет и не будет — забытый пароль означает потерянный аккаунт</span>
             </label>
 
             <p class="auth__error" data-error hidden></p>

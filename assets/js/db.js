@@ -319,7 +319,18 @@ export async function shareKeyWithNewcomers(chat) {
     return rows.length
 }
 
-export async function register({ username, password, email }) {
+/*
+ * Почты при регистрации не спрашиваем намеренно.
+ *
+ * Единственное, зачем она была нужна, — восстановление пароля, а его здесь
+ * не будет: канал восстановления это вторая дверь в аккаунт, и открыть её
+ * может не только хозяин. При сквозном шифровании он вдобавок бесполезен —
+ * ключ выведен из пароля, и сброс пароля переписку всё равно не вернёт.
+ *
+ * Значит почта — данные, которые незачем хранить: пользы ноль, а утечь
+ * они могут. Мессенджер, обещающий анонимность, не собирает лишнего.
+ */
+export async function register({ username, password }) {
     if (!CFG.USERNAME_RE.test(username)) {
         throw new Error("Ник: латиница, цифры и подчёркивание, от 3 до 32 символов")
     }
@@ -337,8 +348,7 @@ export async function register({ username, password, email }) {
         options: {
             data: {
                 username,
-                display_name: username,
-                recovery_email: (email || "").trim()
+                display_name: username
             }
         }
     })
