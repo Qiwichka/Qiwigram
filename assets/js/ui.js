@@ -221,11 +221,90 @@ export function openViewer(node) {
 
     const close = () => {
         viewer.hidden = true
+        viewer.style.opacity = ""
+        stage.style.transform = ""
+        stage.classList.remove("is-dragging")
         stage.innerHTML = ""
+        viewerCloser = null
         document.removeEventListener("keydown", onKey)
     }
     const onKey = (e) => { if (e.key === "Escape") close() }
     document.addEventListener("keydown", onKey)
     $("#viewer-close").onclick = close
     viewer.onclick = (e) => { if (e.target === viewer || e.target === stage) close() }
+
+    viewerCloser = close
+    wireViewerSwipe()
+}
+
+/*
+ * Закрытие просмотра движением вниз.
+ *
+ * На телефоне крестик уезжает под самый верх экрана, а картинку разглядывают,
+ * держа телефон одной рукой. Смахивание вниз — то, что здесь пробуют первым,
+ * и оно должно работать. Картинка едет за пальцем и по дороге гаснет фон:
+ * так видно, что жест засчитан, ещё до того как палец отпустили.
+ */
+let viewerCloser = null
+let viewerSwipeWired = false
+
+function wireViewerSwipe() {
+    // просмотрщик в разметке один и тот же, обработчики нужны тоже одни:
+    // вешать их на каждое открытие значит копить их до конца сеанса
+    if (viewerSwipeWired) return
+    viewerSwipeWired = true
+
+    const viewer = $("#viewer")
+    const stage = $("#viewer-stage")
+    if (!viewer || !stage) return
+
+    const TRIGGER = 110
+
+    let axis = null
+    let x0 = 0, y0 = 0, dy = 0
+
+    const start = (e) => {
+        if (e.touches.length !== 1) return
+        axis = null
+        x0 = e.touches[0].clientX
+        y0 = e.touches[0].clientY
+        dy = 0
+    }
+
+    const move = (e) => {
+        if (e.touches.length !== 1) return
+        const mx = e.touches[0].clientX - x0
+        const my = e.touches[0].clientY - y0
+
+        if (axis === null) {
+            if (Math.abs(mx) < 10 && Math.abs(my) < 10) return
+            axis = Math.abs(my) > Math.abs(mx) ? "y" : "x"
+            if (axis === "y") stage.classList.add("is-dragging")
+        }
+        if (axis !== "y") return
+
+        dy = my
+        stage.style.transform = `translateY(${dy}px) scale(${Math.max(0.82, 1 - Math.abs(dy) / 1400)})`
+        viewer.style.opacity = String(Math.max(0.35, 1 - Math.abs(dy) / 520))
+    }
+
+    const release = () => {
+        if (axis === "y") {
+            stage.classList.remove("is-dragging")
+            if (Math.abs(dy) >= TRIGGER && viewerCloser) {
+                axis = null
+                dy = 0
+                return viewerCloser()
+            }
+            stage.style.transform = ""
+            viewer.style.opacity = ""
+        }
+        axis = null
+        dy = 0
+    }
+
+    viewer.addEventListener("touchstart", start, { passive: true })
+    viewer.addEventListener("touchmove", move, { passive: true })
+    viewer.addEventListener("touchend", release)
+    viewer.addEventListener("touchcancel", release)
 }

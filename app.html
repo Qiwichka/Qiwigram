@@ -273,14 +273,19 @@
                 </button>
             </div>
 
-            <div class="messages" id="messages">
-                <div class="messages__top" id="messages-top"></div>
-                <div class="messages__list" id="messages-list"></div>
-            </div>
+            <!-- Кнопка «вниз» лежит в одной обёртке с лентой, а не рядом
+                 с полем ввода: иначе она отсчитывает низ от всего чата и
+                 садится поверх кнопки микрофона. -->
+            <div class="chat__scroll">
+                <div class="messages" id="messages">
+                    <div class="messages__top" id="messages-top"></div>
+                    <div class="messages__list" id="messages-list"></div>
+                </div>
 
-            <button class="to-bottom" id="btn-to-bottom" aria-label="Вниз">
-                <svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
-            </button>
+                <button class="to-bottom" id="btn-to-bottom" aria-label="Вниз">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+                </button>
+            </div>
 
             <div class="reply-bar" id="reply-bar" hidden>
                 <div class="reply-bar__line"></div>
@@ -318,12 +323,15 @@
                     <svg viewBox="0 0 24 24"><path d="M12 3s5 4.2 5 9a5 5 0 01-10 0c0-1.7.7-3.2 1.5-4.3"/><path d="M12 21a3 3 0 003-3c0-2-3-4.5-3-4.5S9 16 9 18a3 3 0 003 3z"/></svg>
                 </button>
 
-                <button class="icon-btn" id="btn-mic" aria-label="Голосовое">
-                    <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/></svg>
-                </button>
-
+                <!-- Отправка вклинивается слева от микрофона, а не подменяет
+                     его собой: микрофон всегда на одном месте, и до него не
+                     нужно сначала стирать написанное. -->
                 <button class="send-btn" id="btn-send" aria-label="Отправить" hidden>
                     <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 8 6 8z"/></svg>
+                </button>
+
+                <button class="icon-btn composer__mic" id="btn-mic" aria-label="Голосовое">
+                    <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/></svg>
                 </button>
             </footer>
 

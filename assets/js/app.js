@@ -304,6 +304,7 @@ function wireApp() {
     wireSearch()
     wireChatSearch()
     wireComposer()
+    if (isTouch) wireMobileGestures()
 
     // Аппаратная кнопка «назад» в Android-обёртке должна закрывать чат,
     // а не выбрасывать из приложения
@@ -336,13 +337,26 @@ function applyThemeChips() {
 
 /* -------------------------------- шторка -------------------------------- */
 
+/* Шторку можно и вытянуть пальцем, поэтому обе функции снимают следы жеста:
+   иначе доехавшая створка остаётся со своим inline-сдвигом. */
 function openDrawer() {
-    $("#drawer").hidden = false
-    $("#drawer-scrim").hidden = false
+    const drawer = $("#drawer")
+    const scrim = $("#drawer-scrim")
+    drawer.hidden = false
+    scrim.hidden = false
+    drawer.classList.remove("is-dragging")
+    drawer.style.transform = ""
+    scrim.style.opacity = ""
 }
+
 function closeDrawer() {
-    $("#drawer").hidden = true
-    $("#drawer-scrim").hidden = true
+    const drawer = $("#drawer")
+    const scrim = $("#drawer-scrim")
+    drawer.hidden = true
+    scrim.hidden = true
+    drawer.classList.remove("is-dragging", "is-swiped")
+    drawer.style.transform = ""
+    scrim.style.opacity = ""
 }
 
 function renderMe() {
@@ -412,6 +426,12 @@ function emptyState(title, text, action) {
 
 function renderChatList() {
     const list = $("#chat-list")
+
+    /* Список пересобирается на каждое обновление — раз в четверть секунды,
+       когда переписка идёт живо. Прокрутку при этом надо вернуть на место:
+       иначе человек, разбирающий старые чаты в середине списка, от каждого
+       чужого сообщения улетает в самое начало. */
+    const wasAt = list.scrollTop
     list.innerHTML = ""
 
     if (!S.chats.length) {
@@ -434,9 +454,11 @@ function renderChatList() {
         return
     }
 
-    for (const c of shown) {
-        list.append(chatRow(c))
-    }
+    const frag = document.createDocumentFragment()
+    for (const c of shown) frag.append(chatRow(c))
+    list.append(frag)
+
+    if (wasAt) list.scrollTop = wasAt
 }
 
 function chatTitle(c) {
@@ -678,8 +700,8 @@ async function openChat(chatId) {
     // чтобы аппаратная «назад» вернула в список, а не вышла из приложения
     if (isTouch) history.pushState({ chat: chatId }, "")
 
-    const list = $("#messages-list")
-    list.innerHTML = ""
+    // прошлый чат целиком выбрасываем: сверять его строки с новыми незачем
+    resetRows()
     $("#messages-top").innerHTML = '<div class="spinner"></div>'
 
     try {
@@ -731,6 +753,8 @@ function closeChat() {
     if (S.unsubChat) { S.unsubChat(); S.unsubChat = null }
     if (S.typing) { S.typing.stop(); S.typing = null }
     S.chat = null
+    S.messages = []
+    resetRows()
     $("#app").classList.remove("is-chat-open")
     $("#chat-inner").hidden = true
     $("#chat-empty").hidden = false
@@ -766,6 +790,8 @@ function renderChatHeader() {
 
 /* Кнопка «вниз» появляется, когда лента ушла заметно выше конца, и несёт
    число сообщений, пришедших за это время. */
+let shownBadge = null   // что на кнопке нарисовано сейчас, чтобы не трогать зря
+
 function updateToBottom() {
     const box = $("#messages")
     const btn = $("#btn-to-bottom")
@@ -777,20 +803,37 @@ function updateToBottom() {
     btn.classList.toggle("is-on", show)
     if (!show) S.newWhileAway = 0
 
+    /* Счётчик переписывается, только когда изменилось число. Раньше он
+       снимался и вешался заново на каждое событие прокрутки — то есть
+       десятки раз в секунду, и каждый раз заставлял браузер пересчитать
+       раскладку посреди кадра. */
+    const badge = show && S.newWhileAway > 0
+        ? (S.newWhileAway > 99 ? "99+" : String(S.newWhileAway))
+        : null
+    if (badge === shownBadge) return
+    shownBadge = badge
+
     const old = btn.querySelector(".to-bottom__badge")
     if (old) old.remove()
-    if (show && S.newWhileAway > 0) {
-        btn.append(el("span", {
-            class: "to-bottom__badge",
-            text: S.newWhileAway > 99 ? "99+" : String(S.newWhileAway)
-        }))
-    }
+    if (badge) btn.append(el("span", { class: "to-bottom__badge", text: badge }))
+}
+
+/* Прокрутка на телефоне сыплет событиями чаще, чем экран успевает обновиться.
+   Замеры высоты сводим к одному на кадр: без этого палец тянет ленту, а
+   каждый замер посреди прокрутки заставляет браузер пересчитать раскладку. */
+let toBottomFrame = 0
+function scheduleToBottom() {
+    if (toBottomFrame) return
+    toBottomFrame = requestAnimationFrame(() => {
+        toBottomFrame = 0
+        updateToBottom()
+    })
 }
 
 function wireMessagesScroll() {
     const box = $("#messages")
     box.onscroll = async () => {
-        updateToBottom()
+        scheduleToBottom()
         if (box.scrollTop > 120 || S.loadingTop || S.reachedTop || !S.messages.length) return
         S.loadingTop = true
         $("#messages-top").innerHTML = '<div class="spinner"></div>'
@@ -814,18 +857,51 @@ function wireMessagesScroll() {
     }
 }
 
+/*
+ * Лента собирается сверкой с тем, что уже нарисовано, а не заново.
+ *
+ * Раньше любое обновление — пришло сообщение, кто-то поставил реакцию,
+ * собеседник дочитал до конца — стирало `innerHTML` и пересобирало все
+ * сообщения. На компьютере этого не заметно, на телефоне заметно очень:
+ * сотня узлов за кадр вешает прокрутку, картинки заново декодируются и
+ * мигают, играющее голосовое обрывается на полуслове, а обработчики свайпа
+ * переустанавливаются все разом.
+ *
+ * Теперь у каждой строки есть ключ (какая это строка) и подпись (как она
+ * должна выглядеть). Совпало и то и другое — узел не трогаем вовсе;
+ * изменилась подпись — пересобираем один этот узел. Новое сообщение в чате
+ * на триста строк стоит ровно одного созданного узла.
+ */
+
+const rowCache = new Map()   // ключ строки -> { node, sig }
+
+function resetRows() {
+    rowCache.clear()
+    const list = $("#messages-list")
+    if (list) list.innerHTML = ""
+
+    // счётчик «пришло, пока читал старое» относился к прошлому чату
+    shownBadge = null
+    const badge = document.querySelector("#btn-to-bottom .to-bottom__badge")
+    if (badge) badge.remove()
+}
+
 function renderMessages() {
     const list = $("#messages-list")
-    list.innerHTML = ""
+    const want = []
+    const add = (key, sig, make) => want.push({ key, sig, make })
 
     /* Плашка про шифрование. Люди не верят на слово, что переписку нельзя
        прочитать, — и правильно делают. Пусть об этом говорит сам чат,
        как в телеге у секретных чатов, а не только README на гитхабе. */
     if (S.chat && S.chat.encrypted) {
-        list.append(el("div", { class: "system system--lock" },
+        add("lock", "1", () => el("div", { class: "system system--lock" },
             "🔒 Сообщения и файлы в этом чате зашифрованы. Ключ есть только у вас — " +
             "ни сервер, ни владелец сайта прочитать их не могут."))
     }
+
+    // цитата рисуется по исходному сообщению, а оно могло ещё не подгрузиться
+    const known = new Set(S.messages.map((m) => m.id))
 
     let lastDay = ""
     let prev = null
@@ -834,7 +910,8 @@ function renderMessages() {
     S.messages.forEach((m, i) => {
         const day = new Date(m.created_at).toDateString()
         if (day !== lastDay) {
-            list.append(el("div", { class: "day", text: fmtDay(m.created_at) }))
+            const label = fmtDay(m.created_at)
+            add("day:" + day, label, () => el("div", { class: "day", text: label }))
             lastDay = day
             prev = null
         }
@@ -844,7 +921,8 @@ function renderMessages() {
            своё собственное непрочитанным быть не может. */
         if (!dividerDone && S.unreadFrom && m.sender_id !== S.me.id &&
             new Date(m.created_at) > new Date(S.unreadFrom)) {
-            list.append(el("div", { class: "unread-line" }, el("span", { text: "Непрочитанные" })))
+            add("unread", "1", () =>
+                el("div", { class: "unread-line" }, el("span", { text: "Непрочитанные" })))
             dividerDone = true
             prev = null
         }
@@ -858,15 +936,81 @@ function renderMessages() {
             new Date(next.created_at) - new Date(m.created_at) > 300_000 ||
             new Date(next.created_at).toDateString() !== day
 
-        const node = messageNode(m, { isFirst, isLast })
-        if (S.fresh.has(m.id)) node.classList.add("msg--fresh")
-        list.append(node)
+        add("m:" + m.id, messageSig(m, isFirst, isLast, known), () => {
+            const node = messageNode(m, { isFirst, isLast })
+            if (S.fresh.has(m.id)) node.classList.add("msg--fresh")
+            return node
+        })
         prev = m
     })
 
-    // анимация одноразовая: при следующей перерисовке лента не должна
+    reconcile(list, want)
+
+    // анимация одноразовая: при следующей сборке лента не должна
     // заново подпрыгивать целиком
     S.fresh.clear()
+}
+
+/** Всё, от чего зависит внешний вид сообщения. Совпало — рисовать нечего. */
+function messageSig(m, isFirst, isLast, known) {
+    const reacts = S.reactions.get(m.id)
+    const out = m.sender_id === S.me.id
+
+    // галочки: в личке вторая появляется, когда собеседник дочитал до этого места
+    const tick = out && S.chat.type === "dm"
+        ? (S.chat.peer_read_at && new Date(S.chat.peer_read_at) >= new Date(m.created_at) ? "2" : "1")
+        : ""
+
+    return [
+        isFirst ? 1 : 0,
+        isLast ? 1 : 0,
+        m.body || "",
+        m.edited_at || "",
+        m.expires_at || "",
+        m.forwarded_from || "",
+        m.reply_to ? m.reply_to + (known.has(m.reply_to) ? "+" : "-") : "",
+        m.view_once ? 1 : 0,
+        (m.media || []).map((x) => x.path + (x.spoiler ? "!" : "")).join(","),
+        reacts ? reacts.map((r) => r.emoji + r.n + (r.mine ? "!" : "")).join(",") : "",
+        tick,
+        // имя автора в группе приезжает отдельным запросом, уже после ленты
+        out ? "" : findName(m.sender_id)
+    ].join("")
+}
+
+/**
+ * Привести детей `list` к описанию `want` минимальным числом правок.
+ * Узел, чья подпись не изменилась, остаётся тем же самым объектом DOM —
+ * вместе с загруженной картинкой, позицией видео и играющим звуком.
+ */
+function reconcile(list, want) {
+    const seen = new Set()
+    let cur = list.firstChild
+
+    for (const item of want) {
+        seen.add(item.key)
+        let entry = rowCache.get(item.key)
+
+        if (!entry || entry.sig !== item.sig) {
+            if (entry && entry.node === cur) cur = cur.nextSibling
+            if (entry) entry.node.remove()
+            entry = { node: item.make(), sig: item.sig }
+            rowCache.set(item.key, entry)
+        }
+
+        if (entry.node === cur) cur = cur.nextSibling
+        else list.insertBefore(entry.node, cur)
+    }
+
+    // хвост — то, что было и больше не нужно
+    while (cur) {
+        const next = cur.nextSibling
+        cur.remove()
+        cur = next
+    }
+    for (const key of rowCache.keys()) {
+        if (!seen.has(key)) rowCache.delete(key)
+    }
 }
 
 function messageNode(m, { isFirst, isLast }) {
@@ -937,7 +1081,9 @@ function messageNode(m, { isFirst, isLast }) {
         }
     }))
 
-    bubble.append(el("span", {
+    /* Стрелка свайпа висит на самом сообщении, а не на пузыре: пузырь во
+       время жеста едет вместе с пальцем, а она должна стоять на месте. */
+    node.append(el("span", {
         class: "msg__swipe",
         html: '<svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h9a7 7 0 017 7v1"/></svg>'
     }))
@@ -1196,12 +1342,14 @@ function attachSwipeReply(node, bubble, m) {
     let axis = null     // null — ещё не решили, "x" — наш, "y" — прокрутка
     let dx = 0
 
-    const icon = bubble.querySelector(".msg__swipe")
+    const icon = node.querySelector(".msg__swipe")
     const out = node.classList.contains("msg--out")
     const dir = out ? 1 : -1
 
     node.addEventListener("touchstart", (e) => {
         if (e.touches.length !== 1) return
+        // у самого края экрана живёт жест «назад» — ему не мешаем
+        if (e.touches[0].clientX < EDGE_ZONE) { axis = "y"; return }
         x0 = e.touches[0].clientX
         y0 = e.touches[0].clientY
         axis = null
@@ -1271,6 +1419,209 @@ function attachLongPress(node, run) {
 
     node.addEventListener("touchend", cancel)
     node.addEventListener("touchcancel", cancel)
+}
+
+/* ============================================================================
+   ЖЕСТЫ ТЕЛЕФОНА
+
+   На узком экране половина интерфейса недостижима большим пальцем: кнопка
+   «назад» и шторка живут в верхнем левом углу, а держат телефон за низ.
+   Поэтому всё, что там открывается и закрывается, дублируется свайпом.
+   ============================================================================ */
+
+const EDGE_ZONE = 30   // полоса у левого края, откуда начинается жест «назад»
+
+function wireMobileGestures() {
+    edgeSwipe()
+    drawerSwipe()
+    followKeyboard()
+}
+
+/*
+ * Экранная клавиатура.
+ *
+ * Android честно ужимает страницу (об этом просит `interactive-widget`
+ * в мета-теге), и там всё сходится само. Safari на iOS так не умеет:
+ * страница остаётся во всю высоту экрана, а клавиатура просто ложится
+ * поверх — вместе с полем ввода, в которое человек и собирался писать.
+ *
+ * Настоящую видимую высоту знает `visualViewport`. Разницу кладём в
+ * переменную, на которую опирается высота приложения: съеденное
+ * клавиатурой перестаёт считаться местом под переписку.
+ */
+function followKeyboard() {
+    const vv = window.visualViewport
+    if (!vv) return
+
+    const apply = () => {
+        const eaten = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+        // единицу оставляем в CSS, чтобы не городить calc() с числом
+        document.documentElement.style.setProperty("--keyboard", Math.round(eaten) + "px")
+    }
+
+    vv.addEventListener("resize", apply)
+    vv.addEventListener("scroll", apply)
+    apply()
+
+    /* Клавиатура выехала — лента должна остаться там же, где была: показывать
+       человеку середину переписки вместо последних сообщений незачем. */
+    $("#input").addEventListener("focus", () => {
+        const box = $("#messages")
+        if (!box) return
+        const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 200
+        if (atBottom) setTimeout(() => scrollToBottom(false), 220)
+    })
+}
+
+/*
+ * Свайп от левого края. При открытом чате возвращает к списку, при закрытом —
+ * выдвигает шторку. Панель едет за пальцем, а не прыгает по отпусканию:
+ * иначе непонятно, засчитан жест или нет, и его начинают повторять.
+ */
+function edgeSwipe() {
+    const app = $("#app")
+    const chat = $("#chat")
+    const drawer = $("#drawer")
+    const scrim = $("#drawer-scrim")
+    if (!app || !chat) return
+
+    const TRIGGER = 80
+
+    let mode = null      // "back" | "open" | null
+    let axis = null
+    let x0 = 0, y0 = 0, dx = 0
+
+    app.addEventListener("touchstart", (e) => {
+        mode = null
+        if (e.touches.length !== 1) return
+        if (!drawer.hidden) return              // шторка уже открыта
+        // полосы, которые сами ездят вбок, жест забирать не должен
+        if (e.target.closest(".filters, .attach-preview, .emoji-panel__tabs")) return
+        const t = e.touches[0]
+        if (t.clientX > EDGE_ZONE) return
+        mode = app.classList.contains("is-chat-open") ? "back" : "open"
+        axis = null
+        x0 = t.clientX
+        y0 = t.clientY
+        dx = 0
+    }, { passive: true })
+
+    app.addEventListener("touchmove", (e) => {
+        if (!mode || e.touches.length !== 1) return
+        const mx = e.touches[0].clientX - x0
+        const my = e.touches[0].clientY - y0
+
+        if (axis === null) {
+            if (Math.abs(mx) < 8 && Math.abs(my) < 8) return
+            // вертикальное движение отдаём прокрутке и больше не вмешиваемся
+            if (Math.abs(mx) <= Math.abs(my)) { mode = null; return }
+            axis = "x"
+            app.classList.add("is-swiping")
+            if (mode === "open") {
+                drawer.hidden = false
+                scrim.hidden = false
+                // is-swiped глушит анимацию выезда: створка идёт за пальцем
+                drawer.classList.add("is-swiped", "is-dragging")
+            }
+        }
+
+        dx = Math.max(0, mx)
+        if (mode === "back") {
+            chat.style.transform = `translateX(${dx}px)`
+        } else {
+            const w = drawer.offsetWidth
+            const shown = Math.min(dx, w)
+            drawer.style.transform = `translateX(${shown - w}px)`
+            scrim.style.opacity = String(Math.min(1, shown / w))
+        }
+    }, { passive: true })
+
+    const release = () => {
+        if (!mode) return
+        const done = axis === "x" && dx >= TRIGGER
+        app.classList.remove("is-swiping")
+
+        if (mode === "back") {
+            chat.style.transform = ""
+            if (done) {
+                if (navigator.vibrate) navigator.vibrate(8)
+                // именно через историю: тогда системная кнопка «назад»
+                // и этот жест оставляют стопку страниц одинаковой
+                if (history.state && history.state.chat) history.back()
+                else closeChat()
+            }
+        } else {
+            drawer.classList.remove("is-dragging")
+            if (done) openDrawer()
+            else if (axis === "x") retractDrawer(drawer, scrim)
+        }
+
+        mode = null
+        axis = null
+        dx = 0
+    }
+
+    app.addEventListener("touchend", release)
+    app.addEventListener("touchcancel", release)
+}
+
+/* Створка, которую вытянули не до конца, уезжает обратно, а не пропадает:
+   `hidden` снимает её мгновенно, и вместо жеста получается мигание. */
+function retractDrawer(drawer, scrim) {
+    drawer.classList.remove("is-dragging")
+    drawer.style.transform = `translateX(-${drawer.offsetWidth}px)`
+    scrim.style.opacity = "0"
+    setTimeout(() => {
+        // за это время могли открыть створку заново — тогда не мешаем
+        if (drawer.style.transform) closeDrawer()
+    }, 210)
+}
+
+/** Шторка закрывается движением влево — так же, как открылась. */
+function drawerSwipe() {
+    const drawer = $("#drawer")
+    if (!drawer) return
+
+    let axis = null
+    let x0 = 0, y0 = 0, dx = 0
+
+    drawer.addEventListener("touchstart", (e) => {
+        if (e.touches.length !== 1) return
+        axis = null
+        x0 = e.touches[0].clientX
+        y0 = e.touches[0].clientY
+        dx = 0
+    }, { passive: true })
+
+    drawer.addEventListener("touchmove", (e) => {
+        if (e.touches.length !== 1) return
+        const mx = e.touches[0].clientX - x0
+        const my = e.touches[0].clientY - y0
+
+        if (axis === null) {
+            if (Math.abs(mx) < 8 && Math.abs(my) < 8) return
+            // шторка длинная и прокручивается — вертикаль важнее
+            axis = Math.abs(mx) > Math.abs(my) * 1.3 ? "x" : "y"
+            if (axis === "x") drawer.classList.add("is-swiped", "is-dragging")
+        }
+        if (axis !== "x") return
+
+        dx = Math.min(0, mx)
+        drawer.style.transform = `translateX(${dx}px)`
+    }, { passive: true })
+
+    const release = () => {
+        if (axis === "x") {
+            drawer.classList.remove("is-dragging")
+            if (dx < -70) retractDrawer(drawer, $("#drawer-scrim"))
+            else drawer.style.transform = ""
+        }
+        axis = null
+        dx = 0
+    }
+
+    drawer.addEventListener("touchend", release)
+    drawer.addEventListener("touchcancel", release)
 }
 
 /* ----------------------------- меню сообщения ----------------------------- */
@@ -1668,13 +2019,17 @@ function wireComposer() {
 
     send.onclick = doSend
 
-    /* Кнопка справа переключается между микрофоном и самолётиком: пустое
-       поле — значит человек собирается говорить, есть текст — отправлять.
-       Так же устроено в телеге и вотсапе. */
+    /* Микрофон стоит крайним справа и никуда не девается, а самолётик
+       появляется слева от него, когда есть что отправлять.
+
+       Раньше это была одна кнопка на двоих: пустое поле — микрофон, есть
+       текст — отправка. Так делают телега и вотсап, но там же и её беда:
+       чтобы записать голосовое поверх начатого текста, приходится сначала
+       стирать написанное. Места в ряду хватает и на обе. */
     const syncSendButton = () => {
         const has = input.innerText.trim().length > 0 || S.attach.length > 0
         $("#btn-send").hidden = !has
-        $("#btn-mic").hidden = has || !voiceSupported()
+        $("#btn-mic").hidden = !voiceSupported()
     }
     input.addEventListener("input", syncSendButton)
     S.syncSendButton = syncSendButton

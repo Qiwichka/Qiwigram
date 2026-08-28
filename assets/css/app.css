@@ -136,6 +136,10 @@ body {
     touch-action: manipulation;
     /* Длинное нажатие в Android-обёртке не должно выделять текст интерфейса. */
     -webkit-tap-highlight-color: transparent;
+    /* Ни оттягивания всей страницы, ни перезагрузки по рывку вниз: приложение
+       занимает экран целиком, тянуть его некуда, а «обновить страницу»
+       посреди переписки — это потерять место, на котором остановился. */
+    overscroll-behavior: none;
 }
 
 button { font: inherit; color: inherit; }
@@ -383,11 +387,16 @@ svg {
    КАРКАС
    ============================================================================ */
 
+/* --keyboard — сколько снизу занимает экранная клавиатура. Ставит его
+   followKeyboard() в app.js; там же объяснено, зачем это нужно вручную.
+   Где клавиатура ужимает страницу сама, значение остаётся нулевым. */
 .app {
     display: flex;
-    height: 100dvh;
+    height: calc(100dvh - var(--keyboard, 0px));
     overflow: hidden;
 }
+
+.auth { bottom: var(--keyboard, 0px); }
 
 /* ------------------------------ левая колонка ------------------------------ */
 
@@ -526,6 +535,10 @@ svg {
     text-align: left;
     cursor: pointer;
     transition: background 0.12s;
+
+    /* строки за краем списка не рисуются — см. то же у .msg */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 58px;
 }
 .row:hover { background: var(--surface-hover); }
 .row.is-active { background: var(--surface-active); }
@@ -739,6 +752,16 @@ svg {
 
 /* -------------------------------- сообщения -------------------------------- */
 
+/* Лента и кнопка «вниз» — общая область. Кнопка отсчитывает низ от неё,
+   а не от всего чата, иначе садится поверх поля ввода. */
+.chat__scroll {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
 .messages {
     flex: 1;
     min-height: 0;
@@ -769,10 +792,19 @@ svg {
 }
 
 .msg {
+    position: relative;   /* якорь для стрелки свайпа */
     display: flex;
     align-items: flex-end;
     gap: 8px;
     max-width: 100%;
+
+    /* Сообщения за краем экрана не рисуются вовсе. В переписке на несколько
+       сотен реплик это разница между лентой, которая тянется рывками, и
+       лентой, которая едет. `auto` во второй строке значит «помнить, какой
+       высоты этот кусок был на самом деле», поэтому полоса прокрутки не
+       скачет, когда уехавшее возвращается в вид. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 52px;
 }
 .msg + .msg { margin-top: 2px; }
 /* Разрыв между блоками разных отправителей — как в Telegram X */
@@ -853,10 +885,15 @@ svg {
 }
 .msg.is-dragging .msg__bubble { transition: none; }
 
+/* Стрелка сидит в свободном месте строки, а не за краем пузыря.
+   Раньше она висела на 34 пикселя левее пузыря — то есть за границами
+   самого сообщения, — и в группе налезала на аватар. Теперь ещё и
+   обязана оставаться внутри: сообщения за краем экрана не рисуются
+   (см. content-visibility у .msg), а это обрезает всё вылезающее. */
 .msg__swipe {
     position: absolute;
     top: 50%;
-    left: -34px;
+    right: 6px;
     width: 26px;
     height: 26px;
     margin-top: -13px;
@@ -868,7 +905,7 @@ svg {
     opacity: 0;
     pointer-events: none;
 }
-.msg--out .msg__swipe { left: auto; right: -34px; }
+.msg--out .msg__swipe { right: auto; left: 6px; }
 .msg__swipe svg { width: 15px; height: 15px; }
 
 /* ------------------------ кнопка ответа на компьютере ------------------------ */
@@ -975,11 +1012,20 @@ svg {
 
 /* Спойлер. Картинка остаётся на месте, но её не разглядеть, пока не ткнут:
    размытие плюс рябь поверх — иначе крупные пятна цвета всё равно
-   выдают содержимое. */
+   выдают содержимое.
+
+   Размытие меньше, чем кажется нужным (14 вместо 26): стоимость фильтра
+   растёт с радиусом, а недостающее прячет масштаб — растянутая картинка
+   размазывается сама. На телефоне разница между 26 и 14 — это разница
+   между дёргаными кадрами прокрутки и ровными.
+
+   Рябь неподвижна намеренно. Раньше она дрожала по кругу без остановки,
+   и каждый спойлер в переписке — даже уехавший далеко за край экрана —
+   заставлял телефон перерисовывать себя, пока чат открыт. */
 .media__item.is-spoiler img,
 .media__item.is-spoiler video {
-    filter: blur(26px) saturate(1.15);
-    transform: scale(1.14);
+    filter: blur(14px) saturate(1.15);
+    transform: scale(1.2);
 }
 .media__item.is-spoiler::after {
     content: "";
@@ -991,13 +1037,6 @@ svg {
         radial-gradient(circle at 45% 85%, rgba(255,255,255,0.12) 0 1px, transparent 1.6px),
         rgba(0, 0, 0, 0.28);
     background-size: 13px 13px, 17px 17px, 11px 11px, 100% 100%;
-    animation: grain 0.9s steps(3) infinite;
-}
-@keyframes grain {
-    0%   { background-position: 0 0, 0 0, 0 0, 0 0; }
-    33%  { background-position: 4px 2px, -3px 5px, 6px -2px, 0 0; }
-    66%  { background-position: -5px 4px, 2px -4px, -2px 6px, 0 0; }
-    100% { background-position: 0 0, 0 0, 0 0, 0 0; }
 }
 
 .media__hint {
@@ -1263,6 +1302,13 @@ svg {
 }
 
 .composer__toggle.is-on { color: var(--accent); background: var(--accent-soft); }
+
+/* Микрофон — постоянный сосед самолётика, а не его сменщик. Он остаётся
+   обычной кнопкой-иконкой: два залитых кружка подряд читались бы как одна
+   широкая кнопка, и промахнуться мимо нужной стало бы проще. */
+.composer__mic { color: var(--text-dim); }
+.composer__mic:hover { color: var(--text); }
+.composer__mic:active { color: var(--danger); }
 
 /* ------------------------------ эмодзи ------------------------------ */
 
@@ -1530,8 +1576,17 @@ svg {
     box-shadow: var(--shadow);
     animation: slide-in 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
     overflow-y: auto;
+    overscroll-behavior: contain;
 }
 @keyframes slide-in { from { transform: translateX(-100%); } }
+
+/* Створку можно вытянуть и втолкнуть пальцем. Пока идёт жест, она обязана
+   слушаться только его: анимация выезда перебивает inline-сдвиг (у неё выше
+   приоритет), поэтому на время жеста её выключаем совсем, а доезд после
+   отпускания делает уже переход. */
+.drawer.is-swiped { animation: none; transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1); }
+.drawer.is-dragging { transition: none; }
+.drawer-scrim { transition: opacity 0.2s; }
 
 .drawer__head {
     padding: 22px 18px 18px;
@@ -1773,11 +1828,16 @@ svg {
     background: rgba(0, 0, 0, 0.94);
     animation: fade 0.18s ease;
 }
+.viewer { transition: opacity 0.2s; }
+
 .viewer__stage {
     max-width: 100vw;
     max-height: 100dvh;
     padding: 20px;
+    /* возврат на место, если смахнули вниз недостаточно далеко */
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
+.viewer__stage.is-dragging { transition: none; }
 .viewer__stage img,
 .viewer__stage video {
     max-width: calc(100vw - 40px);
@@ -1828,10 +1888,29 @@ svg {
 
 /* ============================================================================
    ТЕЛЕФОН
+
    Одна колонка: список и чат лежат друг на друге, чат наезжает сдвигом.
+
+   Кроме раскладки здесь три вещи, без которых на телефоне неудобно:
+
+   — Размер под палец. 44 пикселя — общепринятый минимум; всё, что меньше,
+     нажимается через раз, и человек начинает целиться вместо того чтобы
+     пользоваться. На мыши эти же кнопки могут быть мельче, потому что
+     курсор попадает в пиксель.
+
+   — Шестнадцатый кегль в полях ввода. Safari на iOS приближает страницу,
+     когда фокус попадает в поле со шрифтом мельче 16px, и обратно уже
+     не отдаляет — переписка остаётся обрезанной по краям до перезагрузки.
+
+   — Отступы под вырез и полосу жестов. `env(safe-area-inset-*)` в PWA
+     не украшение: без них кнопка отправки уезжает под системную полосу
+     и вместо неё срабатывает жест «домой».
    ============================================================================ */
 
 @media (max-width: 900px) {
+
+    /* ------------------------------ раскладка ------------------------------ */
+
     .sidebar {
         position: absolute;
         inset: 0;
@@ -1848,12 +1927,191 @@ svg {
     }
     .app.is-chat-open .chat { transform: none; }
 
+    /* пока чат тянут пальцем, он обязан слушаться только пальца */
+    .app.is-swiping .chat {
+        transition: none;
+        box-shadow: -14px 0 34px rgba(0, 0, 0, 0.3);
+    }
+
     .chat__empty { display: none; }
     .chat__back { display: grid; }
 
-    .msg__bubble { max-width: 82%; }
-    .messages__list { padding: 0 8px; }
+    /* ---------------------------- отклик на касание ----------------------------
+       Наведения на телефоне нет, поэтому нажатие подтверждает себя само.
+       Без этого непонятно, попал ли палец по строке, и её жмут второй раз. */
+
+    .row:active,
+    .drawer__item:active,
+    .opt:active { background: var(--surface-active); }
+    .chip:active { transform: scale(0.95); }
+    .icon-btn:active { background: var(--surface-hover); }
+
+    /* ---------------------------- размер под палец ---------------------------- */
+
+    .icon-btn { width: 44px; height: 44px; }
+    .icon-btn svg { width: 23px; height: 23px; }
+    .send-btn { width: 46px; height: 46px; }
+    .search__close { width: 40px; height: 40px; }
+    .search__close svg { width: 19px; height: 19px; }
+
+    /* строка поиска по переписке узкая — пять элементов в ряд не помещаются,
+       поэтому её кнопки остаются мельче остальных */
+    .chat-search .icon-btn { width: 38px; height: 38px; }
+
+    .row { padding: 11px 12px; }
+    .drawer__item { padding: 14px 18px; }
+    .chip { padding: 8px 15px; font-size: 13px; }
+    .opt { padding: 14px 16px; }
+
+    /* ------------------------------ поля ввода ------------------------------ */
+
+    .field input,
+    .search input,
+    .chat-search input,
+    .composer__input,
+    .modal input,
+    .modal textarea { font-size: 16px; }
+
+    /* -------------------------------- шапки -------------------------------- */
+
+    .sidebar__head {
+        gap: 4px;
+        padding: 6px 8px;
+        padding-top: max(6px, env(safe-area-inset-top));
+    }
+    .sidebar__title { font-size: 19px; }
+
+    .chat__head {
+        gap: 8px;
+        padding: 5px 6px 5px 0;
+        padding-top: max(5px, env(safe-area-inset-top));
+    }
+    .chat__head .avatar { width: 38px; height: 38px; font-size: 14px; }
+    .chat__name { font-size: 15.5px; }
+
+    /* --------------------------------- лента --------------------------------- */
+
+    .messages { padding: 8px 0 4px; }
+    .messages__list { padding: 0 8px; gap: 3px; }
+    .msg__bubble { max-width: 84%; }
+    .msg.is-first { margin-top: 8px; }
+    .day { margin: 12px 0 8px; }
+
+    /* реакции пальцем — цель крупнее, чем под курсором */
+    .reaction { padding: 5px 10px; }
+
     .search-results { inset: 62px 0 0; }
+
+    /* ------------------------------- поле ввода ------------------------------- */
+
+    .composer {
+        gap: 2px;
+        padding: 6px 6px;
+        padding-bottom: max(6px, env(safe-area-inset-bottom));
+    }
+    .composer__input {
+        min-height: 44px;
+        padding: 11px 14px;
+        border-radius: 22px;
+    }
+    .recorder {
+        gap: 8px;
+        padding: 6px 8px;
+        padding-bottom: max(6px, env(safe-area-inset-bottom));
+    }
+
+    /* Клавиатура занимает пол-экрана, и панель эмодзи поверх неё должна
+       быть заметно ниже настольной, иначе от переписки не остаётся ничего. */
+    .emoji-panel {
+        left: 4px;
+        right: 4px;
+        max-height: min(46dvh, 260px);
+    }
+    .emoji-panel__btn { font-size: 24px; }
+
+    /* ------------------------------ круглые кнопки ------------------------------ */
+
+    .fab {
+        right: 16px;
+        bottom: calc(16px + env(safe-area-inset-bottom));
+    }
+    .to-bottom { right: 12px; bottom: 12px; }
+
+    /* --------------------------------- окна ---------------------------------
+       Окно приезжает снизу и прижимается к нижнему краю: середина экрана
+       у высокого телефона — это место, куда большой палец не достаёт. */
+
+    .modal-scrim {
+        place-items: end stretch;
+        padding: 0;
+    }
+    .modal {
+        max-width: none;
+        border-radius: 20px 20px 0 0;
+        padding: 22px 18px;
+        padding-bottom: max(22px, calc(env(safe-area-inset-bottom) + 14px));
+        animation: sheet-up 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
+    }
+    .modal__actions .btn { padding: 14px; }
+
+    /* полоска-ручка сверху: подсказывает, что окно можно смахнуть подложкой */
+    .modal::before {
+        content: "";
+        display: block;
+        width: 38px;
+        height: 4px;
+        margin: -10px auto 16px;
+        border-radius: 2px;
+        background: var(--text-faint);
+        opacity: 0.4;
+    }
+
+    /* --------------------------------- вход --------------------------------- */
+
+    .auth { padding: 0; }
+    .auth__card {
+        border-radius: 0;
+        min-height: 100dvh;
+        padding-top: max(28px, calc(env(safe-area-inset-top) + 18px));
+        padding-bottom: max(28px, calc(env(safe-area-inset-bottom) + 18px));
+    }
+}
+@keyframes sheet-up { from { transform: translateY(100%); } }
+
+/* ----------------------------- совсем узкие -----------------------------
+   360 пикселей — это половина продающихся телефонов. На них шапка чата
+   с четырьмя кнопками и именем не помещается, и имя схлопывается в «…». */
+
+@media (max-width: 380px) {
+    .icon-btn { width: 40px; height: 40px; }
+    .chat__head { gap: 6px; }
+    .chat__head .avatar { width: 36px; height: 36px; }
+    .msg__bubble { max-width: 88%; }
+    .messages__list { padding: 0 6px; }
+
+    /* В ряду теперь и самолётик, и микрофон, а при вложении ещё спойлер
+       с «одним разом». На 360 пикселях они съедают поле ввода, поэтому
+       здесь всё сжимается до предела, за которым ещё попадают пальцем. */
+    .composer { gap: 0; padding-left: 2px; padding-right: 2px; }
+    .send-btn { width: 42px; height: 42px; }
+    .composer__input { padding: 11px 12px; }
+    .filters { gap: 5px; padding-left: 8px; padding-right: 8px; }
+    .avatar--lg { width: 60px; height: 60px; font-size: 22px; }
+}
+
+/* ------------------------------ телефон боком ------------------------------
+   Лёжа высоты остаётся полторы сотни пикселей на всё. Шапки и поле ввода
+   ужимаются, иначе на саму переписку не остаётся ни строки. */
+
+@media (max-height: 480px) and (orientation: landscape) {
+    .sidebar__head, .chat__head { padding-top: 4px; padding-bottom: 4px; }
+    .chat__head .avatar { width: 32px; height: 32px; }
+    .filters { padding: 2px 10px 4px; }
+    .messages { padding: 4px 0 2px; }
+    .composer, .recorder { padding-top: 4px; padding-bottom: 4px; }
+    .composer__input { min-height: 38px; padding: 8px 12px; }
+    .emoji-panel { max-height: 40dvh; }
+    .modal { max-height: 92dvh; overflow-y: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -8,7 +8,7 @@
  * обещает не делать.
  */
 
-const VERSION = "qiwigram-v5"
+const VERSION = "qiwigram-v6"
 
 const SHELL = [
     "./",
