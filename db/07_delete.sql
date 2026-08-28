@@ -87,6 +87,21 @@ grant execute on function public.delete_account() to authenticated;
 drop function if exists public.chat_overview();
 drop function if exists public.chat_people(uuid);
 
+/*
+ * ВНИМАНИЕ ТОМУ, КТО БУДЕТ ПРАВИТЬ ЭТУ ФУНКЦИЮ ДАЛЬШЕ.
+ *
+ * Она объявлена не только здесь: первая версия лежит в 02_overview.sql,
+ * рабочая — в 05_ui.sql, и каждый следующий файл переопределяет её целиком.
+ * Значит брать за основу надо САМОЕ ПОЗДНЕЕ объявление, а не первое
+ * попавшееся, иначе колонки, добавленные в промежутке, тихо исчезнут.
+ *
+ * Именно так однажды и вышло: за основу взяли версию из 02_overview.sql,
+ * и чаты потеряли `encrypted`, `key_created`, `last_enc` и `peer_read_at` —
+ * то есть всё, по чему браузер понимает, что чат зашифрован и чем его
+ * расшифровывать. Снаружи это выглядело как «переписку нечем открыть».
+ *
+ * Здесь основа — версия из 05_ui.sql, к ней добавлена одна колонка.
+ */
 create function public.chat_overview()
 returns table (
     chat_id          uuid,
@@ -95,6 +110,8 @@ returns table (
     username         text,
     avatar_url       text,
     is_public        boolean,
+    encrypted        boolean,
+    key_created      boolean,
     ttl_seconds      integer,
     last_message_at  timestamptz,
     my_role          text,
@@ -105,8 +122,10 @@ returns table (
     peer_name        text,
     peer_avatar      text,
     peer_last_seen   timestamptz,
+    peer_read_at     timestamptz,
     peer_deleted     boolean,
     last_body        text,
+    last_enc         jsonb,
     last_sender_id   uuid,
     last_sender_name text,
     last_has_media   boolean,
@@ -115,17 +134,23 @@ returns table (
 language sql stable security definer set search_path = public as $$
     select
         c.id, c.type, c.title, c.username, c.avatar_url, c.is_public,
+        c.encrypted, c.key_created,
         c.ttl_seconds, c.last_message_at,
         m.role, m.last_read_at, m.muted,
         peer.id, peer.username, coalesce(peer.display_name, peer.username),
-        peer.avatar_url, peer.last_seen, (peer.deleted_at is not null),
-        lm.body, lm.sender_id, ls.username, (lm.media is not null),
+        peer.avatar_url, peer.last_seen, peer.read_at,
+        (peer.deleted_at is not null),
+        -- открытый текст только там, где чат и так открыт
+        case when c.encrypted then null else lm.body end,
+        -- а здесь шифротекст: расшифрует браузер
+        case when c.encrypted then lm.enc else null end,
+        lm.sender_id, ls.username, (lm.media is not null),
         coalesce(un.n, 0)::int
     from chat_members m
     join chats c on c.id = m.chat_id
     -- собеседник в личке; для групп и каналов остаётся пустым
     left join lateral (
-        select p.*
+        select p.*, m2.last_read_at as read_at
         from chat_members m2
         join profiles p on p.id = m2.user_id
         where m2.chat_id = c.id and m2.user_id <> auth.uid() and c.type = 'dm'
@@ -133,7 +158,7 @@ language sql stable security definer set search_path = public as $$
     ) peer on true
     -- последнее живое сообщение
     left join lateral (
-        select x.body, x.sender_id, x.media
+        select x.body, x.enc, x.sender_id, x.media
         from messages x
         where x.chat_id = c.id and not x.deleted
           and (x.expires_at is null or x.expires_at > now())
