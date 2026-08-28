@@ -77,9 +77,17 @@ grant execute on function public.delete_account() to authenticated;
  * собеседник (или участник) может оказаться удалённым, и интерфейс обязан
  * показать это вместо «был в сети час назад». Иначе выходит, что человек
  * просто давно не заходил, и его ждут.
+ *
+ * Обе сначала удаляются, а не заменяются на месте: `create or replace`
+ * умеет менять тело функции, но не список колонок, которые она отдаёт,
+ * и на добавленной колонке падает с «cannot change return type».
+ * Права выдаются заново ниже — вместе с функцией пропадают и они.
  */
 
-create or replace function public.chat_overview()
+drop function if exists public.chat_overview();
+drop function if exists public.chat_people(uuid);
+
+create function public.chat_overview()
 returns table (
     chat_id          uuid,
     type             text,
@@ -147,7 +155,7 @@ language sql stable security definer set search_path = public as $$
     order by c.last_message_at desc;
 $$;
 
-create or replace function public.chat_people(_chat uuid)
+create function public.chat_people(_chat uuid)
 returns table (id uuid, username text, display_name text, avatar_url text,
                role text, last_seen timestamptz, deleted boolean)
 language sql stable security definer set search_path = public as $$
