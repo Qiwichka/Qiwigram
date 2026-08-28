@@ -1714,6 +1714,29 @@ svg {
     color: var(--text-dim);
 }
 .modal .field + .field { margin-top: 16px; }
+
+/* Врезка «что при этом будет». Отделена рамкой намеренно: это не
+   уговоры, а цена вопроса, и потеряться в общем тексте она не должна. */
+.note {
+    padding: 13px 15px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg);
+}
+.note__title {
+    margin-bottom: 7px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-dim);
+}
+.note__list {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-dim);
+}
+.note__list li + li { margin-top: 6px; }
 .modal__actions {
     display: flex;
     gap: 10px;

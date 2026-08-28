@@ -24,6 +24,31 @@
 
         </activity>
 
+        <!--
+            Сторож переписки. Держится в фоне и спрашивает у сервера, не пришло
+            ли новое: без него уведомление появиться неоткуда — обычный путь
+            через сервис Google требует регистрации в Firebase, а её нет.
+
+            dataSync — тип фоновой работы, которого Android 14 требует называть
+            явно; для «ходит в сеть за данными» это он.
+        -->
+        <service
+            android:name=".WatchService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- После перезагрузки телефона сторож должен вернуться сам, иначе
+             уведомления молча пропадут до следующего открытия приложения -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -38,4 +63,17 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Показывать уведомления. С Android 13 спрашивается у человека
+         отдельным системным окном, раньше давалось само -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Работа в фоне -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Просьба не усыплять приложение ради экономии батареи. Android
+         показывает на неё своё окно, решает человек -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>

@@ -7,6 +7,7 @@ import {
     fmtTime, fmtListTime, fmtDay, fmtLastSeen, plural,
     toast, modal, confirmBox, openViewer
 } from "./ui.js"
+import { watchAvailable, offerWatch, enableWatch, disableWatch, watchStatus } from "./watch.js"
 
 const CFG = window.QIWI
 const isTouch = window.matchMedia("(pointer: coarse)").matches
@@ -108,6 +109,11 @@ async function boot() {
     if (!db.keysReady()) {
         if (await ensureKeys()) await refreshChats()
     }
+
+    /* Предложение про уведомления — последним, когда переписка уже на экране
+       и понятно, о чём вообще речь. Спрашивать до входа бессмысленно:
+       сторожить ещё нечего. */
+    offerWatch()
 }
 
 /*
@@ -318,6 +324,7 @@ function wireApp() {
     wireSearch()
     wireChatSearch()
     wireComposer()
+    wireNotifyToggle()
     if (isTouch) wireMobileGestures()
 
     // Аппаратная кнопка «назад» в Android-обёртке должна закрывать чат,
@@ -371,6 +378,33 @@ function closeDrawer() {
     drawer.classList.remove("is-dragging", "is-swiped")
     drawer.style.transform = ""
     scrim.style.opacity = ""
+}
+
+/* Переключатель уведомлений в шторке. Нужен, потому что при входе на
+   предложение легко ответить «не надо», не вчитавшись, — и другого пути
+   передумать без него бы не осталось. */
+function wireNotifyToggle() {
+    if (!watchAvailable) return          // в браузере сторожить нечем
+
+    const section = $("#drawer-notify")
+    const label = $("#btn-notify-text")
+    section.hidden = false
+
+    const paint = async () => {
+        const st = await watchStatus()
+        label.textContent = st && st.enabled
+            ? "Выключить уведомления"
+            : "Включить уведомления"
+    }
+
+    $("#btn-notify").onclick = async () => {
+        const st = await watchStatus()
+        if (st && st.enabled) await disableWatch()
+        else await enableWatch()
+        paint()
+    }
+
+    paint()
 }
 
 function renderMe() {
