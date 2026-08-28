@@ -100,7 +100,12 @@ async function boot() {
     step("открываю ключи")
     await db.loadKeys().catch(() => false)
 
+    /* Подписи админов — до отрисовки: иначе метка «создатель» появится
+       рывком, через секунду после того, как чаты уже нарисованы. */
+    await db.loadAdminTitles()
+
     await startApp()
+    wireAdmin()
 
     /* А вот СПРАШИВАТЬ пароль можно только после того, как приложение уже
        на экране. Диалог лежит ниже заставки по слоям, и заданный раньше
@@ -380,6 +385,123 @@ function closeDrawer() {
     scrim.style.opacity = ""
 }
 
+/* ============================================================================
+   АДМИНКА
+
+   Кнопка спрятана от посторонних, но охраняет не это: код открыт, и любой
+   может нарисовать её себе, запустив копию у себя. Права проверяет база при
+   каждом действии — см. db/08_admin.sql. Здесь только то, что видно глазом.
+   ============================================================================ */
+
+/** Подпись рядом с именем: «создатель». Ничего, если человек не админ. */
+function adminBadge(userId) {
+    const title = db.adminTitles.get(userId)
+    return title ? el("span", { class: "badge", title: "Подтверждено", text: title }) : null
+}
+
+async function wireAdmin() {
+    if (!(await db.amIAdmin())) return
+    $("#drawer-admin").hidden = false
+    $("#btn-admin").onclick = () => { closeDrawer(); adminDialog() }
+}
+
+/*
+ * Поиск по точному нику и удаление найденного.
+ *
+ * Именно по точному, а не списком: инструмент, который сносит аккаунты,
+ * не должен предлагать варианты — промахнуться по соседней строке в списке
+ * куда проще, чем набрать чужой ник целиком и не заметить этого.
+ */
+function adminDialog() {
+    return modal((box, close) => {
+        const input = el("input", {
+            type: "text", placeholder: "ник", autocapitalize: "none", spellcheck: "false"
+        })
+        const result = el("div", { class: "admin__result" })
+
+        const find = async () => {
+            const name = input.value.trim().replace(/^@/, "")
+            result.innerHTML = ""
+            if (!name) return
+
+            let user
+            try {
+                user = await db.adminFind(name)
+            } catch (e) {
+                return result.append(el("div", { class: "admin__empty", text: e.message }))
+            }
+            if (!user) {
+                return result.append(el("div", { class: "admin__empty", text: "Такого ника нет" }))
+            }
+
+            result.append(renderFound(user, close))
+        }
+
+        box.append(
+            el("h2", { text: "Админка" }),
+            el("p", { class: "modal__sub", text: "Найди аккаунт по нику. Ник вводится целиком." }),
+            el("label", { class: "field" }, input),
+            el("div", { class: "modal__actions" },
+                el("button", { class: "btn btn--ghost", onclick: () => close(null) }, "Закрыть"),
+                el("button", { class: "btn btn--primary", onclick: find }, "Найти")
+            ),
+            result
+        )
+
+        input.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); find() } }
+    })
+}
+
+function renderFound(user, closeDialog) {
+    const wrap = el("div", { class: "admin__card" },
+        el("div", { class: "admin__who" },
+            avatarNode(user.display_name || user.username, user.avatar_url, "avatar--sm", false, user.deleted),
+            el("div", { style: "flex:1;min-width:0" },
+                el("div", { class: "admin__name", text: "@" + user.username }),
+                el("div", { class: "admin__meta", text: user.deleted
+                    ? "аккаунт уже удалён"
+                    : (user.admin ? "администратор" : "обычный аккаунт") })
+            )
+        )
+    )
+
+    // удалять некого или нельзя — кнопку не рисуем вовсе
+    if (user.deleted || user.admin) return wrap
+
+    const btn = el("button", {
+        class: "btn btn--primary",
+        style: "background:var(--danger);margin-top:14px"
+    }, `Удалить @${user.username}`)
+
+    btn.onclick = async () => {
+        /* Подтверждение обязательно даже здесь, где всё делается осознанно:
+           это чужой аккаунт, и отменить удаление нельзя ничем. */
+        const ok = await confirmBox({
+            title: `Удалить @${user.username}?`,
+            text: "Аккаунт будет стёрт безвозвратно, а ник останется занятым навсегда. " +
+                  "Отменить это нельзя.",
+            ok: "Удалить", danger: true
+        })
+        if (!ok) return
+
+        btn.disabled = true
+        btn.textContent = "Удаляю…"
+        try {
+            await db.adminDeleteAccount(user.id)
+            toast(`@${user.username} удалён`)
+            closeDialog(null)
+            scheduleChatsRefresh()
+        } catch (e) {
+            btn.disabled = false
+            btn.textContent = `Удалить @${user.username}`
+            toast(e.message, true)
+        }
+    }
+
+    wrap.append(btn)
+    return wrap
+}
+
 /*
  * Удаление аккаунта.
  *
@@ -495,7 +617,12 @@ function renderMe() {
     // профиля не найдёт, что менять
     fresh.id = "me-avatar"
     $("#me-avatar").replaceWith(fresh)
-    $("#me-name").textContent = S.me.display_name || S.me.username
+
+    const name = $("#me-name")
+    name.textContent = S.me.display_name || S.me.username
+    const badge = adminBadge(S.me.id)
+    if (badge) name.append(badge)
+
     $("#me-username").textContent = "@" + S.me.username
 }
 
@@ -620,7 +747,8 @@ function chatRow(c) {
         el("div", { class: "row__body" },
             el("div", { class: "row__top" },
                 el("div", { class: "row__name" },
-                    (c.type === "channel" ? "📢 " : c.type === "group" ? "👥 " : "") + title),
+                    (c.type === "channel" ? "📢 " : c.type === "group" ? "👥 " : "") + title,
+                    c.type === "dm" ? adminBadge(c.peer_id) : null),
                 el("div", { class: "row__time", text: c.last_message_at ? fmtListTime(c.last_message_at) : "" })
             ),
             el("div", { class: "row__bottom" },
@@ -906,7 +1034,13 @@ function renderChatHeader() {
             { id: "chat-avatar" }
         )
     )
-    $("#chat-name").textContent = title
+    const nameBox = $("#chat-name")
+    nameBox.textContent = title
+    // «создатель» рядом с ником — в личке, где ник принадлежит человеку
+    if (c.type === "dm") {
+        const badge = adminBadge(c.peer_id)
+        if (badge) nameBox.append(badge)
+    }
 
     let status
     // «был в сети два часа назад» у стёртого аккаунта — обман: его ждут,
@@ -2898,7 +3032,8 @@ async function peopleDialog(people, admin) {
                 el("span", { style: "flex:1" }, p.deleted
                     ? `${p.username} · аккаунт удалён`
                     : (p.display_name || p.username) +
-                      (p.role !== "member" ? ` · ${p.role === "owner" ? "владелец" : "админ"}` : "")),
+                      (p.role !== "member" ? ` · ${p.role === "owner" ? "владелец" : "админ"}` : ""),
+                    p.deleted ? null : adminBadge(p.id)),
             )
             row.onclick = async () => {
                 if (p.id === S.me.id || p.deleted) return   // писать уже некому

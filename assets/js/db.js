@@ -78,7 +78,10 @@ const MESSAGES = {
     cannot_dm_self: "Нельзя написать самому себе",
     /* Одинаковый текст в обе стороны намеренно: по разным сообщениям можно
        было бы выяснить, заблокировал тебя человек или ты его. */
-    blocked: "Переписка с этим человеком недоступна"
+    blocked: "Переписка с этим человеком недоступна",
+    self_delete: "Свой аккаунт удаляют обычной кнопкой в меню, не через админку",
+    target_is_admin: "Другого администратора удалить нельзя",
+    not_authenticated: "Не выполнен вход"
 }
 
 export function humanError(err) {
@@ -403,6 +406,45 @@ export async function deleteAccount() {
     forgetBlobs()
     dropKeys()
     await sb.auth.signOut().catch(() => { /* аккаунта уже нет, ошибка не важна */ })
+}
+
+/* ============================================================================
+   АДМИН
+
+   Права проверяет база при каждом действии (см. db/08_admin.sql). Здесь —
+   только то, что рисовать: подписи и результаты поиска. Подделать ответы
+   этих функций в своём браузере можно, толку не будет — сервер всё равно
+   спросит у себя заново.
+   ============================================================================ */
+
+/** id -> подпись («создатель»). Забирается один раз при запуске. */
+export const adminTitles = new Map()
+
+export async function loadAdminTitles() {
+    try {
+        const rows = unwrap(await sb.rpc("admin_titles")) || []
+        adminTitles.clear()
+        rows.forEach((r) => adminTitles.set(r.id, r.title))
+    } catch { /* подписи — украшение, без них всё работает */ }
+    return adminTitles
+}
+
+export async function amIAdmin() {
+    try {
+        return unwrap(await sb.rpc("is_admin")) === true
+    } catch {
+        return false
+    }
+}
+
+/** Точный поиск по нику, вместе с удалёнными. Только для админа. */
+export async function adminFind(name) {
+    const rows = unwrap(await sb.rpc("admin_find", { _name: name })) || []
+    return rows[0] || null
+}
+
+export async function adminDeleteAccount(userId) {
+    unwrap(await sb.rpc("admin_delete_account", { _user: userId }))
 }
 
 export async function currentSession() {

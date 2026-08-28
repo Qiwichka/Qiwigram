@@ -1806,6 +1806,45 @@ svg {
 }
 .modal .field + .field { margin-top: 16px; }
 
+/* --------------------------------- админка --------------------------------- */
+
+/* Подпись «создатель» рядом с ником. Мелкая и приглушённая: это пометка,
+   а не звание, и перетягивать на себя имя она не должна. */
+.badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    vertical-align: 1px;
+    white-space: nowrap;
+}
+
+.admin__result:not(:empty) { margin-top: 18px; }
+
+.admin__card {
+    padding: 13px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg);
+}
+.admin__who { display: flex; align-items: center; gap: 11px; }
+.admin__name { font-size: 14.5px; font-weight: 600; }
+.admin__meta { font-size: 12px; color: var(--text-dim); }
+
+.admin__empty {
+    padding: 14px;
+    border-radius: 12px;
+    background: var(--bg);
+    color: var(--text-dim);
+    font-size: 13px;
+    text-align: center;
+}
+
 /* Врезка «что при этом будет». Отделена рамкой намеренно: это не
    уговоры, а цена вопроса, и потеряться в общем тексте она не должна. */
 .note {
