@@ -301,6 +301,7 @@ function wireApp() {
         await db.logout()
         location.reload()
     }
+    $("#btn-delete-account").onclick = () => { closeDrawer(); deleteAccountDialog() }
     $("#btn-chat-info").onclick = () => S.chat && chatInfoDialog()
     $("#btn-to-bottom").onclick = () => {
         S.newWhileAway = 0
@@ -378,6 +379,88 @@ function closeDrawer() {
     drawer.classList.remove("is-dragging", "is-swiped")
     drawer.style.transform = ""
     scrim.style.opacity = ""
+}
+
+/*
+ * Удаление аккаунта.
+ *
+ * Минута ожидания перед кнопкой — не формальность и не издевательство.
+ * Это единственное действие в мессенджере, которое нельзя отменить ничем:
+ * ни поддержкой, ни резервной копией, ни повторной регистрацией под тем же
+ * ником. Решения такого веса не принимают за полсекунды промахнувшимся
+ * пальцем, а шестьдесят секунд — ровно столько, чтобы успеть передумать
+ * и слишком долго, чтобы прожать не глядя.
+ *
+ * Пока идёт отсчёт, окно закрывается свободно: удерживать человека силой
+ * незачем, задача — не дать ошибиться, а не заставить дочитать.
+ */
+function deleteAccountDialog() {
+    const WAIT = 60
+
+    return modal((box, close) => {
+        const ok = el("button", {
+            class: "btn btn--primary",
+            style: "background:var(--danger)",
+            disabled: true
+        }, `Подтвердить (${WAIT})`)
+
+        box.append(
+            el("h2", { text: "Удалить аккаунт?" }),
+            el("p", { class: "modal__sub" },
+                "Это действие необратимо. Отменить его нельзя ничем и никак."),
+
+            el("div", { class: "note" },
+                el("div", { class: "note__title", text: "Что произойдёт" }),
+                el("ul", { class: "note__list" },
+                    el("li", { text: `Ник @${S.me.username} останется занятым навсегда. Зарегистрировать аккаунт на него снова будет невозможно — ни тебе, ни кому-либо ещё` }),
+                    el("li", { text: "Имя, аватар и почта для восстановления сотрутся с сервера" }),
+                    el("li", { text: "Ключ расшифровки исчезнет вместе с аккаунтом: прочитать свою переписку станет нельзя даже с паролем" }),
+                    el("li", { text: "Ты выйдешь из всех групп и каналов" }),
+                    el("li", { text: "У собеседников в личке переписка останется, но вместо аватара будет пустой кружок, а вместо «был в сети» — «аккаунт удалён»" }),
+                    el("li", { text: "Войти снова будет невозможно" })
+                )
+            ),
+
+            el("div", { class: "modal__actions" },
+                el("button", { class: "btn btn--ghost", onclick: () => close(null) }, "Отмена"),
+                ok
+            )
+        )
+
+        /* Отсчёт живёт на самом узле кнопки: окно можно закрыть в любой
+           момент, и таймер должен остановиться вместе с ним, а не тикать
+           до конца сеанса, обращаясь к выброшенной разметке. */
+        let left = WAIT
+        const tick = setInterval(() => {
+            left--
+            if (!ok.isConnected) return clearInterval(tick)
+            if (left > 0) {
+                ok.textContent = `Подтвердить (${left})`
+                return
+            }
+            clearInterval(tick)
+            ok.disabled = false
+            ok.textContent = "Удалить навсегда"
+        }, 1000)
+
+        ok.onclick = async () => {
+            ok.disabled = true
+            ok.textContent = "Удаляю…"
+            try {
+                await db.deleteAccount()
+            } catch (e) {
+                ok.disabled = false
+                ok.textContent = "Удалить навсегда"
+                return toast(e.message || "Не вышло удалить аккаунт", true)
+            }
+            clearInterval(tick)
+            close(true)
+            /* Перезагрузка, а не показ формы входа: в памяти осталась
+               переписка, ключи и подписки удалённого аккаунта, и чистить
+               это по одному — верный способ что-нибудь забыть. */
+            location.replace(location.pathname)
+        }
+    })
 }
 
 /* Переключатель уведомлений в шторке. Нужен, потому что при входе на
@@ -532,7 +615,9 @@ function chatRow(c) {
     }
 
     const row = el("button", { class: "row" + (active ? " is-active" : "") },
-        avatarNode(title, c.avatar_url, "", c.type === "dm" && isOnline(c.peer_last_seen)),
+        avatarNode(title, c.avatar_url, "",
+            c.type === "dm" && !c.peer_deleted && isOnline(c.peer_last_seen),
+            c.type === "dm" && !!c.peer_deleted),
         el("div", { class: "row__body" },
             el("div", { class: "row__top" },
                 el("div", { class: "row__name" },
@@ -816,14 +901,19 @@ function renderChatHeader() {
 
     $("#chat-avatar").replaceWith(
         Object.assign(
-            avatarNode(title, c.avatar_url, "", c.type === "dm" && isOnline(c.peer_last_seen)),
+            avatarNode(title, c.avatar_url,
+                "", c.type === "dm" && !c.peer_deleted && isOnline(c.peer_last_seen),
+                c.type === "dm" && !!c.peer_deleted),
             { id: "chat-avatar" }
         )
     )
     $("#chat-name").textContent = title
 
     let status
-    if (c.type === "dm") status = fmtLastSeen(c.peer_last_seen)
+    // «был в сети два часа назад» у стёртого аккаунта — обман: его ждут,
+    // а ждать некого. Говорим прямо.
+    if (c.type === "dm" && c.peer_deleted) status = "аккаунт удалён"
+    else if (c.type === "dm") status = fmtLastSeen(c.peer_last_seen)
     else if (c.type === "channel") status = c.username ? "@" + c.username : "канал"
     else status = c.username ? "@" + c.username : "группа"
 
@@ -1228,6 +1318,14 @@ function mediaNode(m) {
             return
         }
 
+        // Обычный файл — тоже не плитка: показывать у него нечего,
+        // кроме имени, веса и способа забрать
+        if (item.type === "file") {
+            box.classList.remove("media--1", "media--2", "media--3", "media--4")
+            box.append(fileNode(item))
+            return
+        }
+
         const cell = el("div", { class: "media__item" + (item.spoiler ? " is-spoiler" : "") })
 
         /* Адрес добывается асинхронно: зашифрованный файл надо сначала
@@ -1284,6 +1382,84 @@ function mediaNode(m) {
     }
 
     return box
+}
+
+const FILE_ICON = '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg>'
+
+/*
+ * Файл в переписке.
+ *
+ * Грузится по нажатию, а не заранее: в чате может лежать десяток архивов,
+ * и выкачивать их все ради того, чтобы нарисовать строчку с именем, незачем.
+ * Шифрованный файл вдобавок надо расшифровать, а это уже работа.
+ */
+function fileNode(item) {
+    const name = item.name || "файл"
+    const size = el("div", { class: "file__size", text: fmtSize(item.size) })
+
+    const node = el("div", { class: "file" },
+        el("span", { class: "file__icon", html: FILE_ICON }),
+        el("div", { class: "file__body" },
+            el("div", { class: "file__name", text: name }),
+            size
+        )
+    )
+
+    let busy = false
+    node.onclick = async (e) => {
+        e.stopPropagation()
+        if (busy) return
+        busy = true
+        size.textContent = "Открываю…"
+
+        try {
+            const url = await db.mediaSrc(item, S.chat)
+            await saveFile(url, name)
+            size.textContent = fmtSize(item.size)
+        } catch (err) {
+            size.textContent = fmtSize(item.size)
+            toast(err.message || "Не вышло открыть файл", true)
+        } finally {
+            busy = false
+        }
+    }
+
+    return node
+}
+
+/*
+ * Отдать файл человеку.
+ *
+ * На сайте достаточно ссылки с `download` — браузер сохранит сам. Внутри
+ * APK так нельзя: там страница живёт в своём окне без загрузчика, и такая
+ * ссылка просто ничего не делает. Поэтому в приложении файл уходит через
+ * системное «Поделиться», откуда его можно сохранить или открыть чем угодно.
+ */
+async function saveFile(url, name) {
+    const plugins = window.Capacitor && window.Capacitor.Plugins
+
+    if (inApp && plugins && plugins.Filesystem && plugins.Share) {
+        const blob = await (await fetch(url)).blob()
+        const data = await new Promise((resolve, reject) => {
+            const r = new FileReader()
+            r.onload = () => resolve(String(r.result).split(",")[1] || "")
+            r.onerror = () => reject(new Error("Не удалось прочитать файл"))
+            r.readAsDataURL(blob)
+        })
+
+        // Cache — временная папка: файл нужен ровно до того, как человек
+        // решит, куда его девать, и мусорить в памяти телефона незачем
+        const written = await plugins.Filesystem.writeFile({
+            path: name, data, directory: "CACHE"
+        })
+        await plugins.Share.share({ title: name, url: written.uri })
+        return
+    }
+
+    const a = el("a", { href: url, download: name })
+    document.body.append(a)
+    a.click()
+    a.remove()
 }
 
 /*
@@ -2237,18 +2413,33 @@ function wireRecorder() {
 }
 
 function addAttachments(files) {
-    const good = files.filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"))
-    if (!good.length) return toast("Можно только фото и видео", true)
+    if (!files.length) return
 
-    for (const file of good.slice(0, 10)) {
+    for (const file of files.slice(0, 10)) {
+        /* Всё, что не картинка и не видео, — обычный файл. Спойлер к нему
+           не применяется: прятать под размытием нечего, имя всё равно
+           написано рядом. */
+        const kind = file.type.startsWith("video/") ? "video"
+                   : file.type.startsWith("image/") ? "image"
+                   : "file"
+
         S.attach.push({
             file,
-            kind: file.type.startsWith("video/") ? "video" : "image",
-            url: URL.createObjectURL(file),
-            spoiler: S.spoilerOn
+            kind,
+            // адрес для предпросмотра нужен только тому, что видно глазом
+            url: kind === "file" ? null : URL.createObjectURL(file),
+            spoiler: kind === "file" ? false : S.spoilerOn
         })
     }
     renderAttach()
+}
+
+/** Размер файла человеческими словами. */
+function fmtSize(bytes) {
+    const n = Number(bytes) || 0
+    if (n < 1024) return n + " Б"
+    if (n < 1048576) return Math.round(n / 1024) + " КБ"
+    return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " МБ"
 }
 
 function renderAttach() {
@@ -2262,16 +2453,29 @@ function renderAttach() {
     $("#btn-once").hidden = !has
 
     S.attach.forEach((a, i) => {
-        const thumb = el("div", { class: "attach-thumb" + (a.spoiler ? " is-spoiler" : "") })
-        thumb.append(a.kind === "video"
-            ? el("video", { src: a.url, muted: true, playsinline: true })
-            : el("img", { src: a.url, alt: "" }))
+        const thumb = el("div", {
+            class: "attach-thumb" + (a.spoiler ? " is-spoiler" : "") +
+                   (a.kind === "file" ? " attach-thumb--file" : "")
+        })
+
+        if (a.kind === "file") {
+            // у файла показывать нечего, кроме имени и веса — их и показываем
+            thumb.append(
+                el("span", { class: "attach-thumb__icon", html: FILE_ICON }),
+                el("span", { class: "attach-thumb__name", text: a.file.name }),
+                el("span", { class: "attach-thumb__size", text: fmtSize(a.file.size) })
+            )
+        } else {
+            thumb.append(a.kind === "video"
+                ? el("video", { src: a.url, muted: true, playsinline: true })
+                : el("img", { src: a.url, alt: "" }))
+        }
 
         thumb.append(el("button", {
             class: "attach-thumb__x",
             html: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
             onclick: () => {
-                URL.revokeObjectURL(a.url)
+                if (a.url) URL.revokeObjectURL(a.url)
                 S.attach.splice(i, 1)
                 renderAttach()
             }
@@ -2280,6 +2484,7 @@ function renderAttach() {
         // нажатие по самой картинке переключает спойлер именно у неё
         thumb.onclick = (e) => {
             if (e.target.closest(".attach-thumb__x")) return
+            if (a.kind === "file") return   // прятать под размытием нечего
             a.spoiler = !a.spoiler
             renderAttach()
         }
@@ -2351,7 +2556,7 @@ async function doSend() {
             toast(files.length === 1 ? "Загружаю…" : `Загружаю ${files.length} ${plural(files.length, "файл", "файла", "файлов")}…`)
             media = await Promise.all(files.map((a) =>
                 db.uploadMedia(a.file, { spoiler: a.spoiler, chat: S.chat })))
-            files.forEach((a) => URL.revokeObjectURL(a.url))
+            files.forEach((a) => { if (a.url) URL.revokeObjectURL(a.url) })
         }
 
         const row = await db.sendMessage({
@@ -2690,12 +2895,14 @@ async function peopleDialog(people, admin) {
 
         people.forEach((p) => {
             const row = el("button", { class: "opt" },
-                avatarNode(p.display_name || p.username, p.avatar_url, "avatar--sm"),
-                el("span", { style: "flex:1" }, (p.display_name || p.username) +
-                    (p.role !== "member" ? ` · ${p.role === "owner" ? "владелец" : "админ"}` : "")),
+                avatarNode(p.display_name || p.username, p.avatar_url, "avatar--sm", false, !!p.deleted),
+                el("span", { style: "flex:1" }, p.deleted
+                    ? `${p.username} · аккаунт удалён`
+                    : (p.display_name || p.username) +
+                      (p.role !== "member" ? ` · ${p.role === "owner" ? "владелец" : "админ"}` : "")),
             )
             row.onclick = async () => {
-                if (p.id === S.me.id) return
+                if (p.id === S.me.id || p.deleted) return   // писать уже некому
                 close(null)
                 try {
                     const id = await db.startDm(p.id)

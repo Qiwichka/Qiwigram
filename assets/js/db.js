@@ -379,6 +379,22 @@ export async function logout() {
     await sb.auth.signOut()
 }
 
+/*
+ * Стереть аккаунт. Насовсем.
+ *
+ * Всё, что можно стереть, стирает сама база (см. db/07_delete.sql); здесь
+ * остаётся убрать следы с этого устройства — ключ расшифровки и сессию.
+ * Порядок важен: пока не выполнено удаление на сервере, локальные ключи
+ * трогать нельзя, иначе при обрыве связи человек останется с живым
+ * аккаунтом, но без возможности прочитать собственную переписку.
+ */
+export async function deleteAccount() {
+    unwrap(await sb.rpc("delete_account"))
+    forgetBlobs()
+    dropKeys()
+    await sb.auth.signOut().catch(() => { /* аккаунта уже нет, ошибка не важна */ })
+}
+
 export async function currentSession() {
     const { data } = await sb.auth.getSession()
     return data.session || null
@@ -902,23 +918,35 @@ export async function uploadMedia(file, { spoiler = false, chat = null } = {}) {
     if (!session) throw new Error("Не выполнен вход")
 
     const isVideo = file.type.startsWith("video/")
+    const isImage = file.type.startsWith("image/")
+    /* Всё, что не картинка и не видео, — просто файл: документ, архив,
+       песня. Такому нечего ужимать и незачем мерить в пикселях, он едет
+       как есть. */
+    const isFile = !isVideo && !isImage
+
     if (isVideo && file.size > CFG.MAX_VIDEO_BYTES) {
         throw new Error("Видео тяжелее 50 МБ — сожми или обрежь")
     }
-    if (!isVideo && file.size > CFG.MAX_IMAGE_BYTES) {
+    if (isFile && file.size > CFG.MAX_FILE_BYTES) {
+        throw new Error("Файл тяжелее 50 МБ")
+    }
+    if (isImage && file.size > CFG.MAX_IMAGE_BYTES) {
         throw new Error("Файл слишком тяжёлый")
     }
 
     let blob = file, w = 0, h = 0
     if (isVideo) {
         ({ w, h } = await videoSize(file))
-    } else {
+    } else if (isImage) {
         ({ blob, w, h } = await shrinkImage(file))
     }
 
-    const mime = blob.type || file.type
-    let ext = isVideo ? (file.name.split(".").pop() || "mp4").toLowerCase()
-                      : (blob === file ? (file.name.split(".").pop() || "jpg").toLowerCase() : "jpg")
+    const mime = blob.type || file.type || "application/octet-stream"
+    const own = (file.name.split(".").pop() || "").toLowerCase()
+    let ext
+    if (isVideo) ext = own || "mp4"
+    else if (isFile) ext = own || "bin"
+    else ext = blob === file ? (own || "jpg") : "jpg"
 
     // Шифруем ПЕРЕД отправкой: в хранилище не должно попасть ничего читаемого
     let iv = null
@@ -942,8 +970,13 @@ export async function uploadMedia(file, { spoiler = false, chat = null } = {}) {
     })
     if (error) throw new Error(humanError(error))
 
-    // mime сохраняем в описании: после шифрования его больше неоткуда взять
-    return { path, type: isVideo ? "video" : "image", w, h, spoiler, size: blob.size, iv, mime }
+    /* mime сохраняем в описании: после шифрования его больше неоткуда взять.
+       Имя — только у файлов: у картинки оно ни к чему, а вот «договор.pdf»
+       без имени превращается в загадку. */
+    const item = { path, type: isVideo ? "video" : (isFile ? "file" : "image"),
+                   w, h, spoiler, size: blob.size, iv, mime }
+    if (isFile) item.name = file.name || "файл"
+    return item
 }
 
 /* ============================================================================

@@ -304,7 +304,9 @@
                 <button class="icon-btn" id="btn-attach" aria-label="Прикрепить">
                     <svg viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5 5 0 01-7-7l8.5-8.6a3.3 3.3 0 114.7 4.7l-8.5 8.5a1.7 1.7 0 11-2.3-2.3l7.9-7.9"/></svg>
                 </button>
-                <input type="file" id="file-input" accept="image/*,video/*" multiple hidden>
+                <!-- без accept: прикрепить можно что угодно, не только
+                     фото и видео. Что не картинка — уедет файлом как есть -->
+                <input type="file" id="file-input" multiple hidden>
 
                 <button class="icon-btn composer__toggle" id="btn-emoji" aria-label="Эмодзи">
                     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 007 0"/><circle cx="9" cy="9.5" r=".9" fill="currentColor"/><circle cx="15" cy="9.5" r=".9" fill="currentColor"/></svg>
@@ -426,6 +428,10 @@
     </div>
 
     <div class="drawer__section drawer__section--bottom">
+        <button class="drawer__item drawer__item--danger" id="btn-delete-account">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+            Удалить аккаунт
+        </button>
         <button class="drawer__item drawer__item--danger" id="btn-logout">
             <svg viewBox="0 0 24 24"><path d="M10 5H5v14h5"/><path d="M15 8l4 4-4 4M19 12H9"/></svg>
             Выйти

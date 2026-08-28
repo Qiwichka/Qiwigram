@@ -72,8 +72,21 @@ export function initials(name) {
     return parts.map((p) => p[0] || "").join("").toUpperCase() || "?"
 }
 
-export function avatarNode(name, url, extraClass = "", online = false) {
-    const node = el("div", { class: "avatar " + extraClass })
+/*
+ * Кружок пользователя.
+ *
+ * У удалённого аккаунта он серый и с безликим силуэтом вместо буквы:
+ * цветной кружок с инициалом выглядит как живой человек, которому можно
+ * написать, а написать уже некому.
+ */
+export function avatarNode(name, url, extraClass = "", online = false, deleted = false) {
+    const node = el("div", { class: "avatar " + extraClass + (deleted ? " avatar--gone" : "") })
+
+    if (deleted) {
+        node.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0115 0"/></svg>'
+        return node
+    }
+
     if (url) {
         node.append(el("img", { src: url, alt: "", loading: "lazy" }))
     } else {
