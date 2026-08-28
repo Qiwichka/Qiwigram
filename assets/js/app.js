@@ -2647,7 +2647,14 @@ async function inviteDialog() {
     let full
     try {
         const chat = await db.chatById(S.chat.chat_id)
-        full = `${location.origin}${location.pathname}#join=${chat.id}:${chat.invite_code}`
+        /* Приглашение уходит в другие мессенджеры и должно открываться
+           у кого угодно. Внутри APK свой адрес брать нельзя — там это
+           `https://localhost`, и ссылка не откроется ни у кого, кроме
+           самого приложения. Поэтому в приложении берём адрес сайта. */
+        const base = inApp
+            ? CFG.SITE_URL + "/app.html"
+            : location.origin + location.pathname
+        full = `${base}#join=${chat.id}:${chat.invite_code}`
     } catch (e) { return toast(e.message, true) }
 
     await modal((box, close) => {
