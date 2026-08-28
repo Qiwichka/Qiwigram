@@ -1,0 +1,11 @@
+{
+  "appId": "app.qiwigram.messenger",
+  "appName": "Qiwigram",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

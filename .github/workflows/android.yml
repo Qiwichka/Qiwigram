@@ -1,0 +1,93 @@
+# Собирает APK на серверах GitHub.
+#
+# Локально для этого понадобился бы Android SDK — пара гигабайт и тяжёлая
+# сборка на машине с восемью гигабайтами памяти. Здесь всё то же самое
+# происходит на чужом железе, а готовый файл забирается из вкладки Actions.
+#
+# Запуск: кнопкой «Run workflow» на вкладке Actions, либо тегом v1.2.3 —
+# по тегу файл ещё и прикладывается к релизу, чтобы ссылку можно было
+# кому-то дать, не гоняя человека по вкладкам.
+
+name: Сборка APK
+
+on:
+  workflow_dispatch:      # кнопкой, вручную
+  push:
+    tags: ["v*"]          # и на каждый тег версии
+
+permissions:
+  contents: write         # нужно, чтобы приложить APK к релизу
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"     # Gradle 8.2 с более новыми пока не дружит
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Android SDK на раннере уже стоит — доставлять нечего
+
+      - name: Зависимости
+        run: npm ci
+
+      - name: Собрать www и синхронизировать
+        run: |
+          node tools/make-www.js
+          npx cap sync android
+
+      # Ключ приезжает из секретов репозитория в виде base64 и живёт
+      # только внутри этой сборки: раннер выбрасывается вместе с ним.
+      - name: Достать ключ подписи
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::Нет секрета ANDROID_KEYSTORE_BASE64 — подписывать нечем"
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      - name: Сборка
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Проверить, что вышло подписанным
+        run: |
+          APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n1)
+          echo "APK: $APK"
+          # Версии build-tools на раннере со временем меняются, поэтому
+          # берём самую свежую из установленных, а не прибитую гвоздями
+          SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n1)
+          # Установщик Android с 11-й версии требует подпись схемы v2;
+          # без неё файл ставиться не будет, и узнать об этом лучше здесь
+          "$SIGNER" verify --print-certs "$APK"
+          cp "$APK" qiwigram.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qiwigram-apk
+          path: qiwigram.apk
+          retention-days: 30
+
+      - name: Приложить к релизу
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: qiwigram.apk

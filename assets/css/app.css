@@ -2117,3 +2117,8 @@ svg {
 @media (prefers-reduced-motion: reduce) {
     * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Внутри APK ссылки на лендинг ведут в никуда: главной страницы в приложении
+   не существует, а «вернуться на сайт» человеку, который сайт уже поставил,
+   предлагать незачем. Метку ставит app.js по наличию Capacitor. */
+.is-app [data-web-only] { display: none !important; }

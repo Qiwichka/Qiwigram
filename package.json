@@ -1,0 +1,16 @@
+{
+  "name": "qiwigram",
+  "version": "1.0.0",
+  "description": "Анонимный мессенджер",
+  "private": true,
+  "scripts": {
+    "www": "node tools/make-www.js",
+    "serve": "node tools/serve.js",
+    "android": "node tools/make-www.js && cap sync android"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/core": "^6.2.0"
+  }
+}

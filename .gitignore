@@ -2,6 +2,16 @@
 tools/_client.log
 tools/_access.log
 
+# Capacitor: www собирается из исходников перед каждой сборкой,
+# node_modules ставятся по package-lock — в репозитории им делать нечего
+node_modules/
+www/
+
+# Ключи подписи. Настоящий лежит в ~\.secrets и в секретах репозитория;
+# в коде его быть не должно ни при каких обстоятельствах
+*.jks
+*.keystore
+
 # Системное
 Thumbs.db
 desktop.ini

@@ -57,13 +57,24 @@ function step(s) {
     if (window.qiwiStep) window.qiwiStep(s)
 }
 
+/* Внутри APK всё устроено иначе, чем на сайте: файлы уже лежат на телефоне,
+   ставить приложение не нужно, и возвращаться «на главную» некуда. Отсюда
+   и метка на корне — по ней стили прячут то, что имеет смысл только в вебе. */
+const inApp = !!window.Capacitor
+if (inApp) document.documentElement.classList.add("is-app")
+
 async function boot() {
     step("модули загружены")
     applyThemeChips()
 
-    // Регистрация нужна и здесь, а не только на главной: в APK человек
-    // открывает сразу app.html и на index.html может не зайти никогда
-    if ("serviceWorker" in navigator) {
+    /* Служебный работник нужен только сайту. Регистрация здесь, а не только
+       на главной: человек открывает сразу app.html и на index.html может
+       не зайти никогда.
+
+       В приложении он вреден: файлы и так локальные, кэшировать нечего,
+       а лишний слой кэша умеет ровно одно — подсунуть старые файлы поверх
+       свежеустановленной сборки. */
+    if (!inApp && "serviceWorker" in navigator) {
         navigator.serviceWorker.register("sw.js").catch(() => { /* не критично */ })
     }
 
