@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+ <radialGradient id="bg" cx="30%" cy="15%" r="95%"><stop offset="0" stop-color="#2c1b55"/><stop offset=".55" stop-color="#15121f"/><stop offset="1" stop-color="#0c0b11"/></radialGradient>
+ <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dcc6ff"/><stop offset=".45" stop-color="#9d6dff"/><stop offset="1" stop-color="#5a2ee0"/></linearGradient>
+ <linearGradient id="gloss" gradientUnits="userSpaceOnUse" x1="0" y1="82" x2="0" y2="382"><stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+ <radialGradient id="seed" cx="38%" cy="32%" r="70%"><stop offset="0" stop-color="#e6ff9a"/><stop offset=".6" stop-color="#a6e84a"/><stop offset="1" stop-color="#6fbf2a"/></radialGradient>
+ <mask id="m"><g transform="translate(256 256) scale(1) translate(-268 -264)">
+  <circle cx="248" cy="240" r="150" fill="#fff"/>
+  <path d="M390 300 C400 360 414 404 436 436 C396 430 344 414 296 382 Z" fill="#fff"/>
+  <circle cx="248" cy="240" r="84" fill="#000"/>
+ </g></mask>
+ <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="24"/></filter>
+</defs>
+<rect width="512" height="512" rx="116" fill="url(#bg)"/>
+<g opacity=".6" filter="url(#glow)"><rect width="512" height="512" fill="#8b5cf6" mask="url(#m)"/></g>
+<rect width="512" height="512" fill="url(#ring)" mask="url(#m)"/>
+<rect width="512" height="512" fill="url(#gloss)" mask="url(#m)"/>
+<g transform="translate(256 256) scale(1) translate(-268 -264)"><circle cx="248" cy="240" r="36" fill="url(#seed)"/></g>
+</svg>

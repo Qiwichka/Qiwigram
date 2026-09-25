@@ -8,7 +8,7 @@
  * обещает не делать.
  */
 
-const VERSION = "qiwigram-v7"
+const VERSION = "qiwigram-v8"
 
 const SHELL = [
     "./",
@@ -30,6 +30,7 @@ const SHELL = [
     "assets/js/db.js",
     "assets/js/watch.js",
     "assets/js/app.js",
+    "icons/logo.svg",
     "icons/icon-192.png",
     "icons/icon-512.png"
 ]

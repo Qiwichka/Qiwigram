@@ -20,7 +20,7 @@ assets/js/app.js      сборка мессенджера
 assets/vendor/        библиотека Supabase, лежит своя, а не с чужого CDN
 db/                   схема базы, три файла
 tools/serve.js        локальный сервер для проверки
-tools/make-icons.ps1  перерисовка иконок приложения
+tools/make-icons.sh   все иконки и заставки из одного рисунка (icons/logo.svg)
 ```
 
 ## Запуск у себя
