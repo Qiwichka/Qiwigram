@@ -729,6 +729,16 @@ function renderChatList() {
     if (wasAt) list.scrollTop = wasAt
 }
 
+/* Значок группы или канала перед названием. Раньше тут стояли 👥 и 📢,
+   но эмодзи у каждой системы свои и рядом с текстом смотрятся наклейкой. */
+const KIND_ICONS = {
+    group: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 19a6.5 6.5 0 0113 0"/><path d="M16 5.3a3.2 3.2 0 010 5.4M18.5 19a6.5 6.5 0 00-3-5.5"/></svg>',
+    channel: '<svg viewBox="0 0 24 24"><path d="M3 10v4h4l6 4V6L7 10H3z"/><path d="M17 9a4 4 0 010 6"/></svg>'
+}
+function kindIcon(type) {
+    return KIND_ICONS[type] ? el("span", { class: "row__kind", html: KIND_ICONS[type] }) : null
+}
+
 function chatTitle(c) {
     if (c.type === "dm") return c.peer_name || c.peer_username || "Диалог"
     return c.title || "Без названия"
@@ -758,7 +768,7 @@ function chatRow(c) {
         el("div", { class: "row__body" },
             el("div", { class: "row__top" },
                 el("div", { class: "row__name" },
-                    (c.type === "channel" ? "📢 " : c.type === "group" ? "👥 " : "") + title,
+                    kindIcon(c.type), title,
                     c.type === "dm" ? adminBadge(c.peer_id) : null),
                 el("div", { class: "row__time", text: c.last_message_at ? fmtListTime(c.last_message_at) : "" })
             ),
@@ -909,7 +919,7 @@ function wireSearch() {
                 const row = el("button", { class: "row" },
                     avatarNode(c.title || c.username, c.avatar_url),
                     el("div", { class: "row__body" },
-                        el("div", { class: "row__name", text: (c.type === "channel" ? "📢 " : "👥 ") + (c.title || c.username) }),
+                        el("div", { class: "row__name" }, kindIcon(c.type), c.title || c.username),
                         el("div", { class: "row__preview", text: "@" + c.username })
                     )
                 )
@@ -1311,7 +1321,7 @@ function messageNode(m, { isFirst, isLast }) {
     const bubble = el("div", { class: "msg__bubble" })
 
     if (!out && S.chat.type !== "dm" && isFirst) {
-        bubble.append(el("div", { class: "msg__author", text: author }))
+        bubble.append(el("div", { class: "msg__author", text: author, style: "color:" + avatarColor(author) }))
     }
 
     if (m.forwarded_from) {
@@ -3096,7 +3106,8 @@ function avatarPicker(name, currentUrl) {
             state.file = null
             state.remove = true
             preview.innerHTML = ""
-            preview.style.background = avatarColor(name)
+            preview.style.background = ""
+            preview.style.backgroundColor = avatarColor(name)
             preview.textContent = initials(name)
         }
     }, "Убрать")

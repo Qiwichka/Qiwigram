@@ -6,65 +6,94 @@
    ============================================================================ */
 
 /* --------------------------------- ТЁМНАЯ --------------------------------- */
+/* Графит с лиловым отливом, а не телеграмовский сине-серый: при фиолетовом
+   акценте холодная синева спорила с ним в каждой строке. */
 :root,
 :root[data-theme="dark"] {
-    --bg:            #0e1621;   /* полотно чата */
-    --surface:       #17212b;   /* боковая колонка, шапки */
-    --surface-2:     #1c2733;   /* всплывающие панели */
+    --bg:            #0c0b11;   /* полотно чата */
+    --surface:       #14131b;   /* боковая колонка, шапки */
+    --surface-2:     #1c1a25;   /* всплывающие панели */
     --surface-hover:  rgba(255, 255, 255, 0.05);
-    --surface-active: #2b5278;
+    --surface-active: rgba(139, 92, 246, 0.22);
 
-    --line:          rgba(255, 255, 255, 0.08);
+    --line:          rgba(255, 255, 255, 0.07);
 
-    --text:          #ffffff;
-    --text-dim:      #7d8e9e;
-    --text-faint:    #5d6e7e;
+    --text:          #f4f2fa;
+    --text-dim:      #9a94ab;
+    --text-faint:    #6a6479;
 
     --accent:        #8b5cf6;
+    --accent-2:      #a78bfa;
     --accent-ink:    #ffffff;
     --accent-soft:   rgba(139, 92, 246, 0.16);
+    --accent-grad:   linear-gradient(135deg, #7c4dff 0%, #a36bff 100%);
+    --accent-glow:   0 8px 24px rgba(124, 77, 255, 0.38);
 
-    --bubble-in:     #182533;
-    --bubble-in-ink: #ffffff;
-    --bubble-out:    #3b2a63;
+    --bubble-in:     #1d1b27;
+    --bubble-in-ink: #f4f2fa;
+    --bubble-out:    linear-gradient(160deg, #6f45ee 0%, #5a36c9 100%);
     --bubble-out-ink:#ffffff;
-    --bubble-meta:   rgba(255, 255, 255, 0.45);
+    --bubble-meta:   rgba(255, 255, 255, 0.5);
+    --bubble-shadow: none;
+    --tick-read:     #9be7ff;
+
+    /* Полотно чата: два тусклых пятна света и мелкая сетка точек. Лежит
+       на неподвижном .chat, поэтому при прокрутке не перерисовывается. */
+    --chat-bg:
+        radial-gradient(90% 55% at 100% 0%, rgba(139, 92, 246, 0.12), transparent 62%),
+        radial-gradient(70% 45% at 0% 100%, rgba(99, 102, 241, 0.08), transparent 60%),
+        radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1.3px) 0 0 / 22px 22px,
+        var(--bg);
+    --pill-bg:       rgba(28, 26, 37, 0.82);
 
     --header-bg:     var(--surface);
     --header-ink:    var(--text);
-    --danger:        #ef5350;
-    --shadow:        0 12px 40px rgba(0, 0, 0, 0.5);
+    --online:        #34d399;
+    --danger:        #f25f5c;
+    --shadow:        0 16px 48px rgba(0, 0, 0, 0.55);
     --scheme:        dark;
 }
 
 /* -------------------------------- СВЕТЛАЯ -------------------------------- */
 :root[data-theme="light"] {
-    --bg:            #eef2f6;
+    --bg:            #f2f0f7;
     --surface:       #ffffff;
     --surface-2:     #ffffff;
-    --surface-hover:  rgba(0, 0, 0, 0.04);
-    --surface-active: #e7dcff;
+    --surface-hover:  rgba(40, 20, 90, 0.045);
+    --surface-active: #ede5ff;
 
-    --line:          rgba(0, 0, 0, 0.08);
+    --line:          rgba(30, 20, 60, 0.08);
 
-    --text:          #0f1720;
-    --text-dim:      #707a86;
-    --text-faint:    #99a3ae;
+    --text:          #16131f;
+    --text-dim:      #6e6880;
+    --text-faint:    #a19bb0;
 
     --accent:        #7c3aed;
+    --accent-2:      #8b5cf6;
     --accent-ink:    #ffffff;
-    --accent-soft:   rgba(124, 58, 237, 0.12);
+    --accent-soft:   rgba(124, 58, 237, 0.11);
+    --accent-grad:   linear-gradient(135deg, #7c3aed 0%, #9f67ff 100%);
+    --accent-glow:   0 8px 22px rgba(124, 58, 237, 0.28);
 
     --bubble-in:     #ffffff;
-    --bubble-in-ink: #0f1720;
-    --bubble-out:    #ece1ff;
+    --bubble-in-ink: #16131f;
+    --bubble-out:    linear-gradient(160deg, #efe7ff 0%, #e4d8ff 100%);
     --bubble-out-ink:#1a1030;
-    --bubble-meta:   rgba(0, 0, 0, 0.38);
+    --bubble-meta:   rgba(30, 20, 60, 0.42);
+    --bubble-shadow: 0 1px 2px rgba(40, 20, 90, 0.08);
+    --tick-read:     #7c3aed;
+
+    --chat-bg:
+        radial-gradient(90% 55% at 100% 0%, rgba(139, 92, 246, 0.10), transparent 62%),
+        radial-gradient(rgba(60, 30, 120, 0.06) 1px, transparent 1.3px) 0 0 / 22px 22px,
+        var(--bg);
+    --pill-bg:       rgba(255, 255, 255, 0.85);
 
     --header-bg:     #ffffff;
     --header-ink:    var(--text);
+    --online:        #16b981;
     --danger:        #d93636;
-    --shadow:        0 12px 40px rgba(20, 30, 50, 0.16);
+    --shadow:        0 16px 44px rgba(40, 20, 90, 0.16);
     --scheme:        light;
 }
 
@@ -72,32 +101,45 @@
 /* Здесь фиолетовый не акцент, а сам интерфейс: залитая шапка с переходом
    цвета, лиловые полотна, светящиеся пузыри исходящих. */
 :root[data-theme="violet"] {
-    --bg:            #17092e;
-    --surface:       #200d3d;
-    --surface-2:     #2a1150;
+    --bg:            #150828;
+    --surface:       #1e0c39;
+    --surface-2:     #28104b;
     --surface-hover:  rgba(255, 255, 255, 0.07);
-    --surface-active: #55219c;
+    --surface-active: rgba(176, 110, 245, 0.30);
 
     --line:          rgba(255, 255, 255, 0.10);
 
-    --text:          #f4ecff;
-    --text-dim:      #a98fd0;
-    --text-faint:    #8168a8;
+    --text:          #f6efff;
+    --text-dim:      #b39bd8;
+    --text-faint:    #8a70b0;
 
     --accent:        #b06ef5;
+    --accent-2:      #cf9dff;
     --accent-ink:    #ffffff;
     --accent-soft:   rgba(176, 110, 245, 0.20);
+    --accent-grad:   linear-gradient(135deg, #8a4bf0 0%, #c77dff 100%);
+    --accent-glow:   0 8px 26px rgba(176, 110, 245, 0.45);
 
-    --bubble-in:     #2d1354;
-    --bubble-in-ink: #f4ecff;
+    --bubble-in:     #2b1250;
+    --bubble-in-ink: #f6efff;
     --bubble-out:    linear-gradient(135deg, #7b3fe4, #b06ef5);
     --bubble-out-ink:#ffffff;
     --bubble-meta:   rgba(255, 255, 255, 0.62);
+    --bubble-shadow: none;
+    --tick-read:     #b8f3ff;
+
+    --chat-bg:
+        radial-gradient(90% 60% at 100% 0%, rgba(199, 125, 255, 0.20), transparent 62%),
+        radial-gradient(70% 50% at 0% 100%, rgba(123, 63, 228, 0.18), transparent 60%),
+        radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1.3px) 0 0 / 22px 22px,
+        var(--bg);
+    --pill-bg:       rgba(40, 16, 75, 0.82);
 
     --header-bg:     linear-gradient(135deg, #6d2fd6, #9b52ef);
     --header-ink:    #ffffff;
+    --online:        #4ade80;
     --danger:        #ff6b6b;
-    --shadow:        0 12px 40px rgba(10, 0, 30, 0.6);
+    --shadow:        0 16px 48px rgba(10, 0, 30, 0.6);
     --scheme:        dark;
 }
 
@@ -192,8 +234,12 @@ svg {
 .btn:active { transform: scale(0.985); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 
-.btn--primary { background: var(--accent); color: var(--accent-ink); }
-.btn--primary:hover:not(:disabled) { filter: brightness(1.1); }
+.btn--primary {
+    background: var(--accent-grad);
+    color: var(--accent-ink);
+    box-shadow: var(--accent-glow);
+}
+.btn--primary:hover:not(:disabled) { filter: brightness(1.08); }
 
 .btn--ghost {
     background: transparent;
@@ -216,9 +262,30 @@ svg {
     background: var(--bg);
 }
 .boot__logo {
-    font-size: 26px;
+    display: grid;
+    justify-items: center;
+    gap: 14px;
+    font-size: 24px;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
+}
+/* Знак — тот же, что на иконке приложения: запуск продолжает то, на что
+   только что нажали, а не показывает другую картинку. */
+.boot__logo::before,
+.brand-mark::before { content: "Q"; }
+.boot__logo::before,
+.brand-mark {
+    display: grid;
+    place-items: center;
+    width: 64px;
+    height: 64px;
+    border-radius: 20px;
+    background: var(--accent-grad);
+    color: #fff;
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: 0;
+    box-shadow: var(--accent-glow);
 }
 .boot__bar {
     width: 160px;
@@ -273,7 +340,8 @@ svg {
     padding: 20px;
     overflow-y: auto;
     background:
-        radial-gradient(90% 55% at 50% 0%, var(--accent-soft), transparent 70%),
+        radial-gradient(70% 45% at 50% 0%, rgba(139, 92, 246, 0.28), transparent 70%),
+        radial-gradient(50% 35% at 85% 100%, rgba(99, 102, 241, 0.14), transparent 70%),
         var(--bg);
 }
 
@@ -282,10 +350,14 @@ svg {
     width: 100%;
     max-width: 400px;
     padding: 34px 28px 30px;
-    border-radius: 22px;
-    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 26px;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
     box-shadow: var(--shadow);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
 }
+.auth__card .brand-mark { margin: 0 auto 16px; }
 
 .auth__back {
     position: absolute;
@@ -303,11 +375,11 @@ svg {
 .auth__back:hover { background: var(--surface-hover); }
 
 .auth__logo {
-    margin: 6px 0 2px;
+    margin: 0 0 4px;
     text-align: center;
-    font-size: 27px;
+    font-size: 28px;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
 }
 .auth__tagline {
     margin: 0 0 26px;
@@ -339,7 +411,11 @@ svg {
     cursor: pointer;
     transition: background 0.18s, color 0.18s;
 }
-.auth__tab.is-active { background: var(--surface-2); color: var(--text); }
+.auth__tab.is-active {
+    background: var(--surface-2);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), inset 0 0 0 1px var(--line);
+}
 
 .auth__form { display: grid; gap: 18px; }
 
@@ -352,7 +428,7 @@ svg {
 }
 .field input {
     width: 100%;
-    padding: 14px 15px;
+    padding: 13px 15px;
     border: 1px solid var(--line);
     border-radius: 12px;
     background: var(--bg);
@@ -428,9 +504,10 @@ svg {
 .sidebar__title {
     flex: 1;
     min-width: 0;
-    font-size: 18px;
+    padding-left: 2px;
+    font-size: 19px;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -461,7 +538,7 @@ svg {
     flex: 1;
     min-width: 0;
     padding: 10px 14px 10px 38px;
-    border: 0;
+    border: 1px solid var(--line);
     border-radius: 20px;
     background: color-mix(in srgb, var(--bg) 70%, transparent);
     color: inherit;
@@ -478,29 +555,33 @@ svg {
     display: flex;
     gap: 6px;
     flex: none;
-    padding: 4px 10px 8px;
+    padding: 4px 12px 10px;
     overflow-x: auto;
     scrollbar-width: none;
     background: var(--surface);
-    border-bottom: 1px solid var(--line);
 }
 .filters::-webkit-scrollbar { display: none; }
 
 .chip {
     flex: none;
     padding: 6px 13px;
-    border: 0;
-    border-radius: 14px;
-    background: var(--surface-hover);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
     color: var(--text-dim);
     font-size: 12.5px;
     font-weight: 600;
     white-space: nowrap;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.chip:hover { color: var(--text); }
-.chip.is-active { background: var(--accent); color: var(--accent-ink); }
+.chip:hover { color: var(--text); background: var(--surface-hover); }
+.chip.is-active {
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent-2);
+}
+:root[data-theme="light"] .chip.is-active { color: var(--accent); }
 
 /* Место под список и поиск: поиск накрывает список целиком, поэтому
    ему нужен общий с ним контейнер, а не привязка к высоте шапки —
@@ -526,13 +607,17 @@ svg {
 
 /* --------------------------------- строка --------------------------------- */
 
+/* Строка — плашка с отступом от краёв, а не полоса во всю ширину:
+   выбранный чат читается островком, а не заливкой колонки. */
 .row {
     display: flex;
     align-items: center;
     gap: 12px;
-    width: 100%;
-    padding: 9px 12px;
+    width: calc(100% - 12px);
+    margin: 1px 6px;
+    padding: 8px 10px;
     border: 0;
+    border-radius: 14px;
     background: transparent;
     color: inherit;
     text-align: left;
@@ -545,8 +630,18 @@ svg {
 }
 .row:hover { background: var(--surface-hover); }
 .row.is-active { background: var(--surface-active); }
-.row.is-active .row__preview,
-.row.is-active .row__time { color: rgba(255, 255, 255, 0.75); }
+.row.is-active .row__time { color: var(--accent-2); }
+:root[data-theme="light"] .row.is-active .row__time { color: var(--accent); }
+
+/* значок группы или канала перед названием — вместо эмодзи, которые
+   у каждой системы свои и рядом с текстом выглядят наклейкой */
+.row__kind {
+    display: inline-grid;
+    vertical-align: -2px;
+    margin-right: 5px;
+    color: var(--text-dim);
+}
+.row__kind svg { width: 15px; height: 15px; stroke-width: 2.1; }
 
 .row__body { flex: 1; min-width: 0; }
 
@@ -592,13 +687,14 @@ svg {
     display: grid;
     place-items: center;
     border-radius: 10px;
-    background: var(--accent);
+    background: var(--accent-grad);
     color: var(--accent-ink);
     font-size: 11.5px;
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
 }
 /* У беззвучного чата счётчик серый: он сообщает, но не требует внимания */
-.row__badge--muted { background: var(--text-faint); }
+.row__badge--muted { background: var(--text-faint); color: var(--surface); }
 
 .row__mute {
     flex: none;
@@ -654,10 +750,15 @@ svg {
     display: grid;
     place-items: center;
     border-radius: 50%;
-    background: var(--accent);
+    background-color: var(--accent);
+    /* Блик поверх цвета из ника: плоский кружок выглядит заглушкой, а так —
+       объёмной «таблеткой». Цвет ставит ui.js через background-color,
+       чтобы не затереть этот слой. */
+    background-image: linear-gradient(160deg, rgba(255, 255, 255, 0.26), rgba(0, 0, 0, 0.12));
     color: #fff;
     font-size: 17px;
     font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
     user-select: none;
 }
 /* Кружок обрезает сама картинка, а не контейнер: точке «в сети» надо
@@ -676,6 +777,7 @@ svg {
 .avatar--gone {
     background: var(--surface-hover);
     color: var(--text-faint);
+    text-shadow: none;
 }
 .avatar--gone svg {
     width: 58%;
@@ -694,10 +796,10 @@ svg {
     display: grid;
     place-items: center;
     border: 0;
-    border-radius: 50%;
-    background: var(--accent);
+    border-radius: 18px;
+    background: var(--accent-grad);
     color: var(--accent-ink);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.32);
+    box-shadow: var(--accent-glow);
     cursor: pointer;
     transition: transform 0.15s;
 }
@@ -715,18 +817,41 @@ svg {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    background: var(--bg);
+    background: var(--chat-bg);
 }
 
 .chat__empty {
     flex: 1;
     display: grid;
-    place-items: center;
+    place-content: center;
+    justify-items: center;
+    gap: 14px;
+    padding: 24px;
+    text-align: center;
+}
+.chat__empty .brand-mark {
+    width: 72px;
+    height: 72px;
+    border-radius: 22px;
+    font-size: 36px;
+}
+.chat__empty-title {
+    margin-top: 4px;
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+.chat__empty-text {
+    max-width: 34ch;
+    margin-top: -6px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--text-dim);
 }
 .chat__empty-badge {
     padding: 9px 18px;
     border-radius: 18px;
-    background: var(--surface);
+    background: var(--pill-bg);
     color: var(--text-dim);
     font-size: 13.5px;
 }
@@ -761,8 +886,10 @@ svg {
 .chat__status {
     margin-top: 1px;
     font-size: 12.5px;
-    opacity: 0.65;
+    color: var(--text-dim);
 }
+/* на залитой шапке фиолетовой темы серый текст терялся бы */
+:root[data-theme="violet"] .chat__status { color: inherit; opacity: 0.75; }
 .chat__back { display: none; }
 
 /* -------------------------------- сообщения -------------------------------- */
@@ -799,8 +926,9 @@ svg {
     align-self: center;
     margin: 14px 0 10px;
     padding: 5px 12px;
+    border: 1px solid var(--line);
     border-radius: 14px;
-    background: var(--surface);
+    background: var(--pill-bg);
     color: var(--text-dim);
     font-size: 12px;
     font-weight: 600;
@@ -831,32 +959,42 @@ svg {
 .msg__bubble {
     position: relative;
     max-width: min(72%, 560px);
-    padding: 7px 11px 6px;
-    border-radius: 16px;
+    padding: 7px 12px 6px;
+    border-radius: 18px;
     background: var(--bubble-in);
     color: var(--bubble-in-ink);
-    line-height: 1.38;
+    box-shadow: var(--bubble-shadow);
+    line-height: 1.4;
     word-wrap: break-word;
     overflow-wrap: anywhere;
 }
-.msg.is-last .msg__bubble { border-bottom-left-radius: 5px; }
+/* Реплики одного отправителя подряд — одна стопка: внутренние углы
+   поджаты, хвостик только у последней. */
+.msg:not(.is-first) .msg__bubble { border-top-left-radius: 7px; }
+.msg:not(.is-last) .msg__bubble { border-bottom-left-radius: 7px; }
+.msg.is-last .msg__bubble { border-bottom-left-radius: 4px; }
 
 .msg--out { flex-direction: row-reverse; }
 .msg--out .msg__bubble {
     background: var(--bubble-out);
     color: var(--bubble-out-ink);
 }
+.msg--out:not(.is-first) .msg__bubble { border-top-left-radius: 18px; border-top-right-radius: 7px; }
+.msg--out:not(.is-last) .msg__bubble { border-bottom-left-radius: 18px; border-bottom-right-radius: 7px; }
 .msg--out.is-last .msg__bubble {
-    border-bottom-left-radius: 16px;
-    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 4px;
 }
 
+/* Цвет имени берётся из ника, как у кружка: в группе автора узнают
+   по цвету раньше, чем прочтут. Ставит app.js; здесь — запасной. */
 .msg__author {
     margin-bottom: 2px;
     font-size: 13px;
-    font-weight: 600;
-    color: var(--accent);
+    font-weight: 650;
+    color: var(--accent-2);
 }
+:root[data-theme="light"] .msg__author { filter: brightness(0.82) saturate(1.2); }
 .msg--out .msg__author { display: none; }
 
 .msg__text { white-space: pre-wrap; }
@@ -961,13 +1099,14 @@ svg {
     height: 12px;
     stroke-width: 2.2;
 }
-.msg__ticks.is-read { color: #4fc3f7; }
+.msg__ticks.is-read { color: var(--tick-read); }
 
 /* Плашка про шифрование над первым сообщением */
 .system--lock {
     max-width: 90%;
     line-height: 1.45;
-    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--pill-bg));
     color: var(--text-dim);
 }
 
@@ -977,13 +1116,18 @@ svg {
     display: block;
     margin-bottom: 5px;
     padding: 4px 9px;
-    border-left: 2.5px solid var(--accent);
-    border-radius: 5px;
+    border-left: 3px solid currentColor;
+    border-radius: 6px 8px 8px 6px;
     background: rgba(127, 127, 127, 0.14);
+    color: var(--accent-2);
     font-size: 13px;
     cursor: pointer;
 }
-.quote__name { font-weight: 600; color: var(--accent); }
+.quote__name { font-weight: 600; }
+.msg--out .quote { color: inherit; background: rgba(255, 255, 255, 0.14); }
+:root[data-theme="light"] .msg--out .quote { color: var(--accent); background: rgba(124, 58, 237, 0.08); }
+.quote__text { color: var(--bubble-in-ink); }
+.msg--out .quote__text { color: var(--bubble-out-ink); }
 .quote__text {
     display: -webkit-box;
     -webkit-line-clamp: 1;
@@ -1191,9 +1335,10 @@ svg {
     align-self: center;
     max-width: 80%;
     margin: 8px 0;
-    padding: 5px 12px;
+    padding: 6px 13px;
+    border: 1px solid var(--line);
     border-radius: 14px;
-    background: var(--surface);
+    background: var(--pill-bg);
     color: var(--text-dim);
     font-size: 12.5px;
     text-align: center;
@@ -1243,11 +1388,11 @@ svg {
     height: 44px;
     display: grid;
     place-items: center;
-    border: 0;
+    border: 1px solid var(--line);
     border-radius: 50%;
-    background: var(--surface);
+    background: var(--surface-2);
     color: var(--text-dim);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
     cursor: pointer;
     /* прячем сдвигом, а не display: иначе не будет плавности */
     opacity: 0;
@@ -1272,7 +1417,7 @@ svg {
     display: grid;
     place-items: center;
     border-radius: 10px;
-    background: var(--accent);
+    background: var(--accent-grad);
     color: var(--accent-ink);
     font-size: 11px;
     font-weight: 700;
@@ -1287,7 +1432,7 @@ svg {
     width: 13px;
     height: 13px;
     border-radius: 50%;
-    background: #4caf50;
+    background: var(--online);
     /* обводка цветом подложки, чтобы точка читалась на любом фоне */
     box-shadow: 0 0 0 2.5px var(--surface);
 }
@@ -1307,15 +1452,20 @@ svg {
    ПОЛЕ ВВОДА
    ============================================================================ */
 
+/* Ответ и вложения — карточки над капсулой, а не полосы во всю ширину:
+   поле ввода висит над полотном чата, и сплошная плашка ломала бы это. */
 .reply-bar,
 .attach-preview {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 12px;
+    margin: 0 10px 2px;
+    padding: 8px 8px 8px 12px;
     flex: none;
-    background: var(--surface);
-    border-top: 1px solid var(--line);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface-2);
+    animation: emoji-in 0.16s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 .reply-bar__line {
     width: 2.5px;
@@ -1366,20 +1516,47 @@ svg {
     display: flex;
     align-items: flex-end;
     gap: 6px;
-    padding: 8px 10px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding: 6px 10px 10px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
     flex: none;
-    background: var(--surface);
-    border-top: 1px solid var(--line);
 }
+
+.composer__field {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-end;
+    padding: 0 2px;
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    background: var(--surface-2);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.composer__field:focus-within {
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.composer__field .icon-btn { color: var(--text-dim); }
+.composer__field .icon-btn:hover { color: var(--text); }
+
+/* Кнопки по бокам капсулы — того же роста, что и она, иначе ряд
+   выглядит собранным из разных наборов. */
+.composer > .icon-btn {
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--text-dim);
+}
+.composer > .icon-btn:hover { color: var(--text); background: var(--surface-2); filter: brightness(1.15); }
 
 .composer__input {
     flex: 1;
-    min-height: 40px;
+    min-width: 0;
+    min-height: 42px;
     max-height: 168px;
-    padding: 10px 12px;
-    border-radius: 18px;
-    background: var(--bg);
+    padding: 11px 4px;
     line-height: 1.4;
     outline: none;
     overflow-y: auto;
@@ -1392,7 +1569,7 @@ svg {
     pointer-events: none;
 }
 
-.composer__toggle.is-on { color: var(--accent); background: var(--accent-soft); }
+.composer__field .composer__toggle.is-on { color: var(--accent-2); background: var(--accent-soft); }
 
 /* Микрофон — постоянный сосед самолётика, а не его сменщик. Он остаётся
    обычной кнопкой-иконкой: два залитых кружка подряд читались бы как одна
@@ -1484,11 +1661,13 @@ svg {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 10px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    margin: 6px 10px;
+    margin-bottom: max(10px, env(safe-area-inset-bottom));
+    padding: 3px 3px 3px 4px;
     flex: none;
-    background: var(--surface);
-    border-top: 1px solid var(--line);
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));
+    border-radius: 26px;
+    background: var(--surface-2);
 }
 
 .recorder__dot {
@@ -1605,7 +1784,7 @@ svg {
     flex: 1;
     min-width: 0;
     padding: 9px 14px;
-    border: 0;
+    border: 1px solid var(--line);
     border-radius: 18px;
     background: var(--bg);
     color: var(--text);
@@ -1627,16 +1806,20 @@ svg {
 .send-btn {
     display: grid;
     place-items: center;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     flex: none;
     border: 0;
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--accent-grad);
     color: var(--accent-ink);
+    box-shadow: var(--accent-glow);
     cursor: pointer;
     transition: transform 0.14s, opacity 0.14s;
+    animation: send-in 0.18s cubic-bezier(0.2, 0.8, 0.3, 1.3);
 }
+@keyframes send-in { from { transform: scale(0.6); opacity: 0; } }
+.send-btn svg { margin-left: 2px; fill: currentColor; stroke-width: 1.6; }
 .send-btn:active { transform: scale(0.9); }
 .send-btn:disabled { opacity: 0.35; cursor: default; }
 
@@ -1648,7 +1831,7 @@ svg {
     position: fixed;
     inset: 0;
     z-index: 40;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(6, 4, 14, 0.55);
     animation: fade 0.2s ease;
 }
 @keyframes fade { from { opacity: 0; } }
@@ -1682,9 +1865,12 @@ svg {
 .drawer__head {
     padding: 22px 18px 18px;
     padding-top: max(22px, calc(env(safe-area-inset-top) + 14px));
-    background: var(--header-bg);
+    background:
+        radial-gradient(120% 90% at 0% 0%, rgba(139, 92, 246, 0.30), transparent 65%),
+        var(--header-bg);
     color: var(--header-ink);
 }
+.drawer__head .avatar { box-shadow: 0 0 0 3px color-mix(in srgb, var(--surface) 70%, transparent); }
 .drawer__name {
     margin-top: 12px;
     font-size: 16px;
@@ -1693,13 +1879,14 @@ svg {
 .drawer__username { font-size: 13px; opacity: 0.7; }
 
 .drawer__section {
-    padding: 10px 0;
+    padding: 8px 0;
     border-top: 1px solid var(--line);
 }
+.drawer__head + .drawer__section { border-top: 0; }
 .drawer__section--bottom { margin-top: auto; }
 
 .drawer__label {
-    padding: 6px 18px 8px;
+    padding: 6px 20px 6px;
     font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -1713,9 +1900,11 @@ svg {
     display: flex;
     align-items: center;
     gap: 14px;
-    width: 100%;
-    padding: 12px 18px;
+    width: calc(100% - 16px);
+    margin: 0 8px;
+    padding: 11px 12px;
     border: 0;
+    border-radius: 12px;
     background: transparent;
     color: inherit;
     font-size: 14.5px;
@@ -1747,12 +1936,13 @@ svg {
     justify-items: center;
     gap: 6px;
     padding: 10px 4px;
-    border: 1.5px solid transparent;
-    border-radius: 12px;
+    border: 1.5px solid var(--line);
+    border-radius: 14px;
     background: var(--bg);
     color: var(--text-dim);
     font-size: 11px;
     cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
 }
 .theme-chip i {
     width: 26px;
@@ -1760,7 +1950,11 @@ svg {
     border-radius: 50%;
     border: 1px solid var(--line);
 }
-.theme-chip.is-active { border-color: var(--accent); color: var(--text); }
+.theme-chip.is-active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text);
+}
 
 /* ============================================================================
    ОКНА
@@ -1777,7 +1971,7 @@ svg {
     display: grid;
     place-items: center;
     padding: 18px;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(6, 4, 14, 0.6);
     animation: fade 0.18s ease;
     overflow-y: auto;
 }
@@ -1786,7 +1980,8 @@ svg {
     width: 100%;
     max-width: 400px;
     padding: 24px;
-    border-radius: 18px;
+    border: 1px solid var(--line);
+    border-radius: 22px;
     background: var(--surface-2);
     box-shadow: var(--shadow);
     animation: pop 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
@@ -2029,10 +2224,13 @@ svg {
 }
 .toast {
     padding: 11px 18px;
-    border-radius: 12px;
-    background: rgba(20, 20, 24, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: rgba(24, 21, 34, 0.94);
     color: #fff;
     font-size: 13.5px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     box-shadow: var(--shadow);
     animation: toast-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
@@ -2104,6 +2302,7 @@ svg {
     .icon-btn { width: 44px; height: 44px; }
     .icon-btn svg { width: 23px; height: 23px; }
     .send-btn { width: 46px; height: 46px; }
+    .composer > .icon-btn { width: 46px; height: 46px; }
     .search__close { width: 40px; height: 40px; }
     .search__close svg { width: 19px; height: 19px; }
 
@@ -2111,8 +2310,8 @@ svg {
        поэтому её кнопки остаются мельче остальных */
     .chat-search .icon-btn { width: 38px; height: 38px; }
 
-    .row { padding: 11px 12px; }
-    .drawer__item { padding: 14px 18px; }
+    .row { padding: 9px 10px; }
+    .drawer__item { padding: 13px 12px; }
     .chip { padding: 8px 15px; font-size: 13px; }
     .opt { padding: 14px 16px; }
 
@@ -2158,20 +2357,21 @@ svg {
     /* ------------------------------- поле ввода ------------------------------- */
 
     .composer {
-        gap: 2px;
-        padding: 6px 6px;
-        padding-bottom: max(6px, env(safe-area-inset-bottom));
+        gap: 5px;
+        padding: 4px 6px 8px;
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
     }
+    .composer__field { border-radius: 23px; }
     .composer__input {
         min-height: 44px;
-        padding: 11px 14px;
-        border-radius: 22px;
+        padding: 11px 2px;
     }
     .recorder {
         gap: 8px;
-        padding: 6px 8px;
-        padding-bottom: max(6px, env(safe-area-inset-bottom));
+        margin: 4px 6px;
+        margin-bottom: max(8px, env(safe-area-inset-bottom));
     }
+    .reply-bar, .attach-preview { margin: 0 6px 2px; }
 
     /* Клавиатура занимает пол-экрана, и панель эмодзи поверх неё должна
        быть заметно ниже настольной, иначе от переписки не остаётся ничего. */
@@ -2200,7 +2400,8 @@ svg {
     }
     .modal {
         max-width: none;
-        border-radius: 20px 20px 0 0;
+        border-radius: 24px 24px 0 0;
+        border-width: 1px 0 0;
         padding: 22px 18px;
         padding-bottom: max(22px, calc(env(safe-area-inset-bottom) + 14px));
         animation: sheet-up 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
@@ -2245,9 +2446,10 @@ svg {
     /* В ряду теперь и самолётик, и микрофон, а при вложении ещё спойлер
        с «одним разом». На 360 пикселях они съедают поле ввода, поэтому
        здесь всё сжимается до предела, за которым ещё попадают пальцем. */
-    .composer { gap: 0; padding-left: 2px; padding-right: 2px; }
-    .send-btn { width: 42px; height: 42px; }
-    .composer__input { padding: 11px 12px; }
+    .composer { gap: 3px; padding-left: 4px; padding-right: 4px; }
+    .send-btn, .composer > .icon-btn { width: 42px; height: 42px; }
+    .composer__field .icon-btn { width: 38px; }
+    .composer__input { padding: 11px 2px; }
     .filters { gap: 5px; padding-left: 8px; padding-right: 8px; }
     .avatar--lg { width: 60px; height: 60px; font-size: 22px; }
 }
@@ -2261,8 +2463,9 @@ svg {
     .chat__head .avatar { width: 32px; height: 32px; }
     .filters { padding: 2px 10px 4px; }
     .messages { padding: 4px 0 2px; }
-    .composer, .recorder { padding-top: 4px; padding-bottom: 4px; }
-    .composer__input { min-height: 38px; padding: 8px 12px; }
+    .composer { padding-top: 4px; padding-bottom: 4px; }
+    .recorder { margin-top: 4px; margin-bottom: 4px; }
+    .composer__input { min-height: 38px; padding: 8px 2px; }
     .emoji-panel { max-height: 40dvh; }
     .modal { max-height: 92dvh; overflow-y: auto; }
 }

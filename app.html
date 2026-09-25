@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Qiwigram</title>
-<meta name="theme-color" content="#0e1621">
+<meta name="theme-color" content="#0c0b11">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -133,6 +133,7 @@
     <div class="auth__card">
         <a class="auth__back" href="index.html" aria-label="На главную" data-web-only>←</a>
 
+        <div class="brand-mark" aria-hidden="true"></div>
         <h1 class="auth__logo">Qiwigram</h1>
         <p class="auth__tagline">Свобода слова</p>
 
@@ -229,7 +230,9 @@
     <!-- ------------------------------ справа ----------------------------- -->
     <main class="chat" id="chat">
         <div class="chat__empty" id="chat-empty">
-            <div class="chat__empty-badge">Выбери чат, чтобы начать</div>
+            <div class="brand-mark" aria-hidden="true"></div>
+            <div class="chat__empty-title">Выбери чат, чтобы начать</div>
+            <div class="chat__empty-text">Личка и закрытые группы шифруются прямо на устройстве. Сервер видит только, что сообщение было.</div>
         </div>
 
         <div class="chat__inner" id="chat-inner" hidden>
@@ -302,6 +305,9 @@
                      фото и видео. Что не картинка — уедет файлом как есть -->
                 <input type="file" id="file-input" multiple hidden>
 
+                <!-- Капсула: эмодзи, текст и переключатели вложения — одно
+                     поле, скрепка и микрофон — кнопки вокруг него -->
+                <div class="composer__field">
                 <button class="icon-btn composer__toggle" id="btn-emoji" aria-label="Эмодзи">
                     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 007 0"/><circle cx="9" cy="9.5" r=".9" fill="currentColor"/><circle cx="15" cy="9.5" r=".9" fill="currentColor"/></svg>
                 </button>
@@ -318,6 +324,7 @@
                         title="Просмотр один раз: после открытия вложение сгорит" aria-label="Один раз" hidden>
                     <svg viewBox="0 0 24 24"><path d="M12 3s5 4.2 5 9a5 5 0 01-10 0c0-1.7.7-3.2 1.5-4.3"/><path d="M12 21a3 3 0 003-3c0-2-3-4.5-3-4.5S9 16 9 18a3 3 0 003 3z"/></svg>
                 </button>
+                </div>
 
                 <!-- Отправка вклинивается слева от микрофона, а не подменяет
                      его собой: микрофон всегда на одном месте, и до него не
@@ -361,10 +368,10 @@
         <div class="drawer__label">Тема</div>
         <div class="theme-row">
             <button class="theme-chip" data-theme-set="dark">
-                <i style="background:#17212b"></i><span>Тёмная</span>
+                <i style="background:#14131b"></i><span>Тёмная</span>
             </button>
             <button class="theme-chip" data-theme-set="light">
-                <i style="background:#ffffff"></i><span>Светлая</span>
+                <i style="background:#f2f0f7"></i><span>Светлая</span>
             </button>
             <button class="theme-chip" data-theme-set="violet">
                 <i style="background:linear-gradient(135deg,#7b3fe4,#b06ef5)"></i><span>Фиолетовая</span>

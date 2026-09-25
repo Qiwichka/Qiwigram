@@ -90,7 +90,8 @@ export function avatarNode(name, url, extraClass = "", online = false, deleted =
     if (url) {
         node.append(el("img", { src: url, alt: "", loading: "lazy" }))
     } else {
-        node.style.background = avatarColor(name)
+        // именно backgroundColor: шорткат затёр бы блик из app.css
+        node.style.backgroundColor = avatarColor(name)
         node.textContent = initials(name)
     }
     if (online) node.append(el("i", { class: "avatar__dot", title: "в сети" }))
